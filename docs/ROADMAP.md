@@ -235,7 +235,7 @@ Akzeptanzkriterien:
 
 ### 6.2 Temperatur-Feuchte-Grafik bauen
 
-Status 2026-05-01: Erledigt fuer manuelle Daten. Eine CustomPainter-Grafik zeigt die relative Feuchte ueber Temperatur, markiert aktuellen Punkt und Taupunkt.
+Status 2026-05-01: Erweitert zur interaktiven Arbeitsflaeche. Die Grafik zeigt relative Feuchte ueber Temperatur, markiert aktuellen Punkt und Taupunkt, unterstuetzt Pan/Zoom/Reset und erlaubt das Ziehen des aktuellen Punktes frei oder entlang gleicher absoluter Feuchte.
 
 Ziel: Die App zeigt, bei welchen Temperaturen welche relative Luftfeuchte aus demselben Feuchtegehalt entsteht.
 
