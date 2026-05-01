@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/storage/calculator_preferences_store.dart';
 import '../features/humidity_calculator/humidity_calculator_page.dart';
 import '../features/location/location_service.dart';
+import '../features/sensors/ble_advertisement_scanner.dart';
 import '../features/weather/weather_service.dart';
 
 class DewprofiApp extends StatelessWidget {
@@ -11,11 +12,13 @@ class DewprofiApp extends StatelessWidget {
     this.weatherService,
     this.preferencesStore,
     this.locationService,
+    this.goveeScanner,
   });
 
   final WeatherService? weatherService;
   final CalculatorPreferencesStore? preferencesStore;
   final LocationService? locationService;
+  final BleAdvertisementScanner? goveeScanner;
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +50,7 @@ class DewprofiApp extends StatelessWidget {
         weatherService: weatherService,
         preferencesStore: preferencesStore,
         locationService: locationService,
+        goveeScanner: goveeScanner,
       ),
     );
   }

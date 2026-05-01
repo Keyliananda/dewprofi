@@ -4,7 +4,8 @@ enum MeasurementSource {
   manual('manuell'),
   place('ort'),
   examplePlace('beispielort'),
-  location('standort');
+  location('standort'),
+  bleAdvertisement('ble');
 
   const MeasurementSource(this.label);
 

@@ -326,12 +326,16 @@ Hinweis 2026-05-01: Standort-Ablehnung und Standort-Zustimmung sind technisch pe
 
 Ziel: Erster lokaler Sensorpfad ueber Bluetooth.
 
+Status 2026-05-01: Paket `9.1-govee-h5075-ble-discovery-spike` implementiert die Discovery-Basis. Die Flutter-App hat einen fakebaren BLE-Scanner-Port, einen `flutter_blue_plus`-Adapter, ein normalisiertes Live-Sensormodell, einen H5075-Parser fuer bekannte passive Manufacturer-Payloads, kopierbare Raw-Samples und eine `Sensor`-Datenquelle, die dekodierte Werte in den Feuchte-Ergebnispfad uebernimmt. iOS-, Android- und macOS-Berechtigungen sind vorbereitet.
+
+Status Paket `9.2-govee-h5075-platform-scan-stabilization`: Das erste echte macOS-Sample `GVH5075_ACC0` ist in Parser- und UI-Tests abgedeckt. Der iPhone-Scanpfad ist mit echter H5075-Hardware validiert: `GVH5075_47EE` wurde bei `-41 dBm` als `22,0 °C`, `29,1 % rF` und `95 %` Batterie dekodiert. Der Batteriebyte-Wert `0x00` aus dem macOS-Capture wird bis zur Gegenpruefung gegen LCD/Govee-App als unbekannt behandelt. Der FlutterBluePlus-macOS-Scan bleibt per Default deaktiviert, weil der native Darwin-Pfad trotz korrekter Bluetooth-Keys in TCC crashte; eine gezielte Probe ist ueber `--dart-define=DEWPROFI_ENABLE_MACOS_FBP_BLE_SCAN=true` moeglich. Details und Testscript stehen in `docs/GOVEE_H5075_DISCOVERY.md`.
+
 Geplanter Umfang:
 
-- BLE-Scan fuer H5075
-- Passive Advertisement-Decodierung fuer Live-Werte
-- Normalisiertes Datenmodell fuer Temperatur, relative Luftfeuchte, Batterie, Zeitstempel und Quelle
-- Rohdaten-Samples fuer Parser-Debugging
+- BLE-Scan fuer H5075: Basis erledigt; iOS-Hardware-Validierung erfolgreich, macOS-Pluginpfad wegen TCC-Crash gegated.
+- Passive Advertisement-Decodierung fuer Live-Werte: bekannte Manufacturer-Payload und erstes echtes Sample testbar, weitere Firmware-Samples offen.
+- Normalisiertes Datenmodell fuer Temperatur, relative Luftfeuchte, Batterie, Zeitstempel und Quelle: Basis erledigt.
+- Rohdaten-Samples fuer Parser-Debugging: Basis erledigt, erstes echtes Sample dokumentiert.
 - GATT/History-Sync als spaetere Erweiterung nach Live-Werten
 
 Diese Phase gehoert nicht mehr zum ersten MVP.

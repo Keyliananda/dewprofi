@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
@@ -5,12 +6,18 @@ import 'package:flutter/material.dart';
 
 import '../../core/storage/calculator_preferences_store.dart';
 import '../../core/psychrometrics/psychrometrics.dart';
+import '../../core/sensors/ble_advertisement.dart';
+import '../../core/sensors/sensor_measurement.dart';
+import '../govee/govee_h5075_parser.dart';
+import '../govee/govee_h5075_spike_panel.dart';
 import '../location/location_service.dart';
+import '../sensors/ble_advertisement_scanner.dart';
+import '../sensors/flutter_blue_plus_ble_scanner.dart';
 import '../weather/example_places.dart';
 import '../weather/weather_measurement.dart';
 import '../weather/weather_service.dart';
 
-enum _InputMode { manual, location, place, examples }
+enum _InputMode { manual, location, place, examples, sensor }
 
 enum _DetailMode { simple, pro }
 
@@ -20,21 +27,26 @@ class HumidityCalculatorPage extends StatefulWidget {
     WeatherService? weatherService,
     CalculatorPreferencesStore? preferencesStore,
     LocationService? locationService,
+    BleAdvertisementScanner? goveeScanner,
   }) : weatherService = weatherService ?? OpenMeteoWeatherService(),
        preferencesStore =
            preferencesStore ??
            const SharedPreferencesCalculatorPreferencesStore(),
-       locationService = locationService ?? GeolocatorLocationService();
+       locationService = locationService ?? GeolocatorLocationService(),
+       goveeScanner = goveeScanner ?? FlutterBluePlusBleAdvertisementScanner();
 
   final WeatherService weatherService;
   final CalculatorPreferencesStore preferencesStore;
   final LocationService locationService;
+  final BleAdvertisementScanner goveeScanner;
 
   @override
   State<HumidityCalculatorPage> createState() => _HumidityCalculatorPageState();
 }
 
 class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
+  static const int _defaultMinimumSensorRssi = -80;
+
   final _temperatureController = TextEditingController(text: '21.0');
   final _humidityController = TextEditingController(text: '50');
   final _pressureController = TextEditingController();
@@ -50,16 +62,42 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
   bool _hasLoadedPreferences = false;
   _DetailMode _detailMode = _DetailMode.simple;
   WeatherPlace? _selectedPlace;
+  BleScanSnapshot _bleScanSnapshot = const BleScanSnapshot.idle();
+  int _minimumSensorRssi = _defaultMinimumSensorRssi;
+  final _goveeParser = const GoveeH5075AdvertisementParser();
+  StreamSubscription<BleScanSnapshot>? _bleScanSubscription;
 
   @override
   void initState() {
     super.initState();
+    _bleScanSubscription = widget.goveeScanner.snapshots.listen(
+      (snapshot) {
+        if (!mounted) {
+          return;
+        }
+        setState(() => _bleScanSnapshot = snapshot);
+      },
+      onError: (Object error) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _bleScanSnapshot = BleScanSnapshot(
+            status: BleScannerStatus.error,
+            advertisements: _bleScanSnapshot.advertisements,
+            message: 'Bluetooth-Scanfehler: $error',
+          );
+        });
+      },
+    );
     _recalculate(persist: false);
     _restorePreferences();
   }
 
   @override
   void dispose() {
+    _bleScanSubscription?.cancel();
+    widget.goveeScanner.dispose();
     _temperatureController.dispose();
     _humidityController.dispose();
     _pressureController.dispose();
@@ -255,6 +293,75 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
     );
   }
 
+  Future<void> _startGoveeScan() async {
+    try {
+      await widget.goveeScanner.startScan();
+    } on Object catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _bleScanSnapshot = BleScanSnapshot(
+          status: BleScannerStatus.error,
+          advertisements: _bleScanSnapshot.advertisements,
+          message: 'Bluetooth-Scan konnte nicht gestartet werden: $error',
+        );
+      });
+    }
+  }
+
+  Future<void> _stopGoveeScan() async {
+    try {
+      await widget.goveeScanner.stopScan();
+    } on Object catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _bleScanSnapshot = BleScanSnapshot(
+          status: BleScannerStatus.error,
+          advertisements: _bleScanSnapshot.advertisements,
+          message: 'Bluetooth-Scan konnte nicht gestoppt werden: $error',
+        );
+      });
+    }
+  }
+
+  void _changeMinimumSensorRssi(int value) {
+    setState(() => _minimumSensorRssi = value);
+  }
+
+  bool _passesMinimumSensorRssi(BleAdvertisement advertisement) {
+    final rssi = advertisement.rssi;
+    return rssi == null || rssi >= _minimumSensorRssi;
+  }
+
+  void _applySensorMeasurement(LiveSensorMeasurement sensorMeasurement) {
+    final measurement = WeatherMeasurement(
+      temperatureCelsius: sensorMeasurement.temperatureCelsius,
+      relativeHumidityPercent: sensorMeasurement.relativeHumidityPercent,
+      source: MeasurementSource.bleAdvertisement,
+      label: sensorMeasurement.label,
+      observedAt: sensorMeasurement.observedAt,
+      fetchedAt: sensorMeasurement.receivedAt,
+    );
+
+    _temperatureController.text = _formatNumber(
+      sensorMeasurement.temperatureCelsius,
+    );
+    _humidityController.text = _formatNumber(
+      sensorMeasurement.relativeHumidityPercent,
+    );
+    setState(() {
+      _inputMode = _InputMode.sensor;
+      _selectedPlace = null;
+      _weatherMessage = sensorMeasurement.batteryPercent == null
+          ? 'Sensorwert uebernommen.'
+          : 'Sensorwert uebernommen · Batterie ${sensorMeasurement.batteryPercent} %.';
+    });
+    _showMeasurement(measurement);
+  }
+
   Future<void> _loadWeather({
     required _InputMode mode,
     required Future<WeatherMeasurement> Function() loader,
@@ -376,6 +483,9 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
     if (inputMode == _InputMode.manual || measurement == null) {
       return null;
     }
+    if (inputMode == _InputMode.sensor) {
+      return 'Gespeicherter Sensorwert vom letzten Scan.';
+    }
     return 'Gespeicherte Wetterwerte vom letzten Abruf.';
   }
 
@@ -406,6 +516,12 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
           builder: (context, constraints) {
             final isWide = constraints.maxWidth >= 840;
             final result = _result;
+            final visibleBleAdvertisements = _bleScanSnapshot.advertisements
+                .where(_passesMinimumSensorRssi)
+                .toList();
+            final goveeDiscoveries = _goveeParser.discover(
+              visibleBleAdvertisements,
+            );
 
             return ListView(
               padding: EdgeInsets.symmetric(
@@ -433,6 +549,11 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                                 isLoadingWeather: _isLoadingWeather,
                                 weatherMessage: _weatherMessage,
                                 canRefreshWeather: _canRefreshStoredWeather,
+                                bleScanSnapshot: _bleScanSnapshot,
+                                visibleBleAdvertisements:
+                                    visibleBleAdvertisements,
+                                minimumSensorRssi: _minimumSensorRssi,
+                                goveeDiscoveries: goveeDiscoveries,
                                 onRefreshWeather: _refreshStoredWeather,
                                 onToggleExpanded: _toggleInputExpanded,
                                 onChanged: _recalculate,
@@ -440,6 +561,12 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                                 onUseLocation: _loadCurrentLocation,
                                 onSearchPlace: _searchPlace,
                                 onExamplePlaceSelected: _loadExamplePlace,
+                                onStartGoveeScan: _startGoveeScan,
+                                onStopGoveeScan: _stopGoveeScan,
+                                onMinimumSensorRssiChanged:
+                                    _changeMinimumSensorRssi,
+                                onApplySensorMeasurement:
+                                    _applySensorMeasurement,
                               ),
                             ),
                             const SizedBox(width: 20),
@@ -471,6 +598,11 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                               isLoadingWeather: _isLoadingWeather,
                               weatherMessage: _weatherMessage,
                               canRefreshWeather: _canRefreshStoredWeather,
+                              bleScanSnapshot: _bleScanSnapshot,
+                              visibleBleAdvertisements:
+                                  visibleBleAdvertisements,
+                              minimumSensorRssi: _minimumSensorRssi,
+                              goveeDiscoveries: goveeDiscoveries,
                               onRefreshWeather: _refreshStoredWeather,
                               onToggleExpanded: _toggleInputExpanded,
                               onChanged: _recalculate,
@@ -478,6 +610,11 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                               onUseLocation: _loadCurrentLocation,
                               onSearchPlace: _searchPlace,
                               onExamplePlaceSelected: _loadExamplePlace,
+                              onStartGoveeScan: _startGoveeScan,
+                              onStopGoveeScan: _stopGoveeScan,
+                              onMinimumSensorRssiChanged:
+                                  _changeMinimumSensorRssi,
+                              onApplySensorMeasurement: _applySensorMeasurement,
                             ),
                             const SizedBox(height: 16),
                             _ResultColumn(
@@ -512,6 +649,10 @@ class _InputPanel extends StatelessWidget {
     required this.isExpanded,
     required this.isLoadingWeather,
     required this.canRefreshWeather,
+    required this.bleScanSnapshot,
+    required this.visibleBleAdvertisements,
+    required this.minimumSensorRssi,
+    required this.goveeDiscoveries,
     required this.onToggleExpanded,
     required this.onModeChanged,
     required this.onUseLocation,
@@ -519,6 +660,10 @@ class _InputPanel extends StatelessWidget {
     required this.onSearchPlace,
     required this.onRefreshWeather,
     required this.onExamplePlaceSelected,
+    required this.onStartGoveeScan,
+    required this.onStopGoveeScan,
+    required this.onMinimumSensorRssiChanged,
+    required this.onApplySensorMeasurement,
     this.weatherMessage,
   });
 
@@ -532,6 +677,10 @@ class _InputPanel extends StatelessWidget {
   final bool isExpanded;
   final bool isLoadingWeather;
   final bool canRefreshWeather;
+  final BleScanSnapshot bleScanSnapshot;
+  final List<BleAdvertisement> visibleBleAdvertisements;
+  final int minimumSensorRssi;
+  final List<GoveeH5075Discovery> goveeDiscoveries;
   final VoidCallback onToggleExpanded;
   final ValueChanged<_InputMode> onModeChanged;
   final VoidCallback onUseLocation;
@@ -539,6 +688,10 @@ class _InputPanel extends StatelessWidget {
   final VoidCallback onSearchPlace;
   final VoidCallback onRefreshWeather;
   final ValueChanged<WeatherPlace> onExamplePlaceSelected;
+  final VoidCallback onStartGoveeScan;
+  final VoidCallback onStopGoveeScan;
+  final ValueChanged<int> onMinimumSensorRssiChanged;
+  final ValueChanged<LiveSensorMeasurement> onApplySensorMeasurement;
   final String? weatherMessage;
 
   @override
@@ -580,6 +733,11 @@ class _InputPanel extends StatelessWidget {
                     value: _InputMode.examples,
                     label: Text('Beispiele'),
                     icon: Icon(Icons.location_city),
+                  ),
+                  ButtonSegment(
+                    value: _InputMode.sensor,
+                    label: Text('Sensor'),
+                    icon: Icon(Icons.sensors),
                   ),
                 ],
                 selected: {inputMode},
@@ -645,6 +803,19 @@ class _InputPanel extends StatelessWidget {
                           : () => onExamplePlaceSelected(place),
                     ),
                 ],
+              ),
+              const SizedBox(height: 16),
+            ],
+            if (inputMode == _InputMode.sensor) ...[
+              GoveeH5075SpikePanel(
+                snapshot: bleScanSnapshot,
+                visibleAdvertisements: visibleBleAdvertisements,
+                minimumRssi: minimumSensorRssi,
+                discoveries: goveeDiscoveries,
+                onStartScan: onStartGoveeScan,
+                onStopScan: onStopGoveeScan,
+                onMinimumRssiChanged: onMinimumSensorRssiChanged,
+                onApplyMeasurement: onApplySensorMeasurement,
               ),
               const SizedBox(height: 16),
             ],

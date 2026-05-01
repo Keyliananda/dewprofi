@@ -5,12 +5,13 @@ Flutter-App fuer den visuellen Feuchte-Rechner-MVP. Zusaetzlich liegen ein Larav
 ## Was aktuell funktioniert
 
 - Manuelle Eingabe von Temperatur, relativer Luftfeuchte und optionalem Luftdruck.
-- Datenquelle kann zwischen manueller Eingabe, Standort, Ortssuche und fuenf Beispielorten wechseln.
+- Datenquelle kann zwischen manueller Eingabe, Standort, Ortssuche, fuenf Beispielorten und dem Sensor-Spike wechseln.
 - Open-Meteo liefert Wetterwerte fuer Standort, Orte und Koordinaten; bei Fehlern bleibt der manuelle Pfad nutzbar.
 - Letzte Quelle, Werte, Ort/Beispielort und Einfach-/Profi-Modus werden lokal wiederhergestellt.
 - Standort wird nicht beim Appstart abgefragt, sondern nur nach explizitem Tippen auf `Standort verwenden`.
 - Lokale Berechnung von Taupunkt und absoluter Feuchte ohne Netzwerk.
 - Erste Ergebnisvisualisierung mit Feuchtezone und Temperatur-Feuchte-Grafik.
+- Govee-H5075-Discovery-Spike: Sensor-Scan, Kandidatenliste, kopierbare Raw-BLE-Samples und testbarer Parser fuer passive Live-Advertisements. Der iPhone-Scanpfad ist mit echter H5075-Hardware validiert; macOS ist im FlutterBluePlus-Adapter bis zur TCC-Klaerung per Default gegated.
 - iOS-, Android-, macOS- und Web-Projektstruktur ist angelegt.
 
 ## Lokal starten
@@ -31,6 +32,8 @@ flutter analyze
 Der Open-Meteo-Pfad nutzt Netzwerk nur zur Laufzeit. Tests mocken Standort, Geocoding und Forecast, damit sie offline stabil bleiben.
 
 Der Standortmodus ist auf dem iPhone manuell geprueft: Auswahl von `Standort`, explizites `Standort verwenden`, iOS-Berechtigungsdialog, GPS-basierter Wetterabruf und Fallback-Verhalten bleiben normale App-Pfade. Android ist fuer diesen iOS-first MVP bewusst nachgelagert, weil lokal die Android cmdline-tools fehlen. Die finale MVP-Checkliste mit automatisierten Nachweisen und Device-Szenarien liegt in `docs/MVP_TEST_CHECKLIST.md`.
+
+Der Govee-H5075-Spike ist als Datenquelle `Sensor` in der App sichtbar. Er nutzt lokale BLE-Advertisements, keine Cloud und keinen Govee-Account. Echte H5075-Werte wurden auf dem iPhone dekodiert und uebernommen (`GVH5075_47EE`, `22,0 °C`, `29,1 %`, Batterie `95 %`). Ein erstes macOS-Sample ist ebenfalls dokumentiert und in Tests abgedeckt; der macOS-Pluginpfad bleibt wegen TCC-Crash per Default deaktiviert. Testscript und Raw-Sample-Hinweise stehen in `docs/GOVEE_H5075_DISCOVERY.md`.
 
 Auf dem angeschlossenen iPhone starten:
 

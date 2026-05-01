@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:dewprofi/app/dewprofi_app.dart';
 import 'package:dewprofi/core/storage/calculator_preferences_store.dart';
 import 'package:dewprofi/core/psychrometrics/psychrometrics.dart';
+import 'package:dewprofi/core/sensors/ble_advertisement.dart';
+import 'package:dewprofi/features/govee/govee_h5075_parser.dart';
 import 'package:dewprofi/features/location/location_service.dart';
+import 'package:dewprofi/features/sensors/ble_advertisement_scanner.dart';
 import 'package:dewprofi/features/weather/weather_measurement.dart';
 import 'package:dewprofi/features/weather/weather_service.dart';
 import 'package:flutter/gestures.dart';
@@ -459,6 +463,185 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('Standort verwenden'), findsOneWidget);
   });
+
+  testWidgets('govee spike scans and applies a decoded BLE advertisement', (
+    tester,
+  ) async {
+    final scanner = _FakeBleAdvertisementScanner();
+    await _pumpCalculator(tester, goveeScanner: scanner);
+    await _expandInput(tester);
+
+    await tester.ensureVisible(find.text('Sensor'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sensor'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('govee-scan-toggle-button')));
+    await tester.pumpAndSettle();
+
+    expect(scanner.startCount, 1);
+
+    scanner.emit(
+      BleScanSnapshot(
+        status: BleScannerStatus.scanning,
+        advertisements: [
+          BleAdvertisement(
+            deviceId: 'AA:BB:CC:DD:EE:FF',
+            deviceName: 'GVH5075_1234',
+            rssi: -58,
+            observedAt: DateTime(2026, 5, 1, 12),
+            manufacturerData: [
+              BleManufacturerData(
+                companyId: goveeManufacturerCompanyId,
+                data: const [0x00, 0x02, 0x92, 0x76, 0x57, 0x00],
+              ),
+            ],
+          ),
+        ],
+        message: 'Scan laeuft.',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('GVH5075_1234'), findsWidgets);
+    expect(find.text('56,6 %'), findsWidgets);
+    expect(find.text('87 %'), findsOneWidget);
+    expect(find.textContaining('manufacturer 0xEC88'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('apply-govee-measurement-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('ble · GVH5075_1234'), findsOneWidget);
+    expect(
+      find.text('Sensorwert uebernommen · Batterie 87 %.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('govee spike filters weak advertisements by minimum signal', (
+    tester,
+  ) async {
+    final scanner = _FakeBleAdvertisementScanner();
+    await _pumpCalculator(tester, goveeScanner: scanner);
+    await _expandInput(tester);
+
+    await tester.ensureVisible(find.text('Sensor'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sensor'));
+    await tester.pumpAndSettle();
+
+    scanner.emit(
+      BleScanSnapshot(
+        status: BleScannerStatus.scanning,
+        advertisements: [
+          BleAdvertisement(
+            deviceId: 'AA:BB:CC:DD:EE:10',
+            deviceName: 'GVH5075_WEAK',
+            rssi: -90,
+            observedAt: DateTime(2026, 5, 1, 12),
+            manufacturerData: [
+              BleManufacturerData(
+                companyId: goveeManufacturerCompanyId,
+                data: const [0x00, 0x02, 0x92, 0x76, 0x57, 0x00],
+              ),
+            ],
+          ),
+        ],
+        message: 'Scan laeuft.',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('-80 dBm'), findsOneWidget);
+    expect(
+      find.text('Keine Advertisements ueber Mindestsignal.'),
+      findsOneWidget,
+    );
+    expect(find.text('GVH5075_WEAK'), findsNothing);
+
+    final slider = tester.widget<Slider>(
+      find.byKey(const ValueKey('govee-minimum-rssi-slider')),
+    );
+    slider.onChanged?.call(-95);
+    await tester.pumpAndSettle();
+
+    expect(find.text('-95 dBm'), findsOneWidget);
+    expect(find.text('GVH5075_WEAK'), findsWidgets);
+  });
+
+  testWidgets(
+    'govee spike applies the first real macOS sample without battery',
+    (tester) async {
+      final scanner = _FakeBleAdvertisementScanner();
+      await _pumpCalculator(tester, goveeScanner: scanner);
+      await _expandInput(tester);
+
+      await tester.ensureVisible(find.text('Sensor'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sensor'));
+      await tester.pumpAndSettle();
+
+      scanner.emit(
+        BleScanSnapshot(
+          status: BleScannerStatus.scanning,
+          advertisements: [
+            BleAdvertisement(
+              deviceId: 'E1C8662B-38E7-519A-E0CC-07531BC1E78C',
+              deviceName: 'GVH5075_ACC0',
+              rssi: -70,
+              observedAt: DateTime(2026, 5, 1, 12),
+              manufacturerData: [
+                BleManufacturerData(
+                  companyId: goveeManufacturerCompanyId,
+                  data: const [0x00, 0x02, 0x92, 0x76, 0x00, 0x00],
+                ),
+              ],
+              serviceUuids: const ['EC88'],
+            ),
+          ],
+          message: 'Scan laeuft.',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('GVH5075_ACC0'), findsWidgets);
+      expect(find.text('16,9 °C'), findsWidgets);
+      expect(find.text('56,6 %'), findsWidgets);
+      expect(find.text('0 %'), findsNothing);
+
+      await tester.tap(
+        find.byKey(const ValueKey('apply-govee-measurement-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('ble · GVH5075_ACC0'), findsOneWidget);
+      expect(find.text('Sensorwert uebernommen.'), findsOneWidget);
+    },
+  );
+
+  testWidgets('govee spike reports scanner start failures without crashing', (
+    tester,
+  ) async {
+    final scanner = _FakeBleAdvertisementScanner(
+      startError: StateError('native scan unavailable'),
+    );
+    await _pumpCalculator(tester, goveeScanner: scanner);
+    await _expandInput(tester);
+
+    await tester.ensureVisible(find.text('Sensor'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sensor'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('govee-scan-toggle-button')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.textContaining('Bluetooth-Scan konnte nicht gestartet werden'),
+      findsOneWidget,
+    );
+  });
 }
 
 Future<void> _expandInput(WidgetTester tester) async {
@@ -470,6 +653,7 @@ Future<_FakePreferencesStore> _pumpCalculator(
   WidgetTester tester, {
   WeatherService? weatherService,
   LocationService? locationService,
+  BleAdvertisementScanner? goveeScanner,
   CalculatorPreferences? initialPreferences,
 }) async {
   final preferencesStore = _FakePreferencesStore(initialPreferences);
@@ -478,6 +662,7 @@ Future<_FakePreferencesStore> _pumpCalculator(
       weatherService: weatherService,
       locationService: locationService,
       preferencesStore: preferencesStore,
+      goveeScanner: goveeScanner,
     ),
   );
   await tester.pump();
@@ -661,6 +846,62 @@ class _FakeLocationService implements LocationService {
       throw error;
     }
     return coordinates;
+  }
+}
+
+class _FakeBleAdvertisementScanner implements BleAdvertisementScanner {
+  _FakeBleAdvertisementScanner({this.startError});
+
+  final _controller = StreamController<BleScanSnapshot>.broadcast();
+  final Object? startError;
+  int startCount = 0;
+  int stopCount = 0;
+  bool disposed = false;
+
+  @override
+  Stream<BleScanSnapshot> get snapshots async* {
+    yield const BleScanSnapshot.idle();
+    yield* _controller.stream;
+  }
+
+  @override
+  Future<void> startScan() async {
+    startCount += 1;
+    final error = startError;
+    if (error != null) {
+      throw error;
+    }
+    emit(
+      BleScanSnapshot(
+        status: BleScannerStatus.scanning,
+        advertisements: const [],
+        message: 'Scan laeuft.',
+      ),
+    );
+  }
+
+  @override
+  Future<void> stopScan() async {
+    stopCount += 1;
+    emit(
+      BleScanSnapshot(
+        status: BleScannerStatus.idle,
+        advertisements: const [],
+        message: 'Scan gestoppt.',
+      ),
+    );
+  }
+
+  void emit(BleScanSnapshot snapshot) {
+    if (!_controller.isClosed) {
+      _controller.add(snapshot);
+    }
+  }
+
+  @override
+  void dispose() {
+    disposed = true;
+    _controller.close();
   }
 }
 
