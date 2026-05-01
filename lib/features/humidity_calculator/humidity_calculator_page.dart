@@ -3,9 +3,17 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/psychrometrics/psychrometrics.dart';
+import '../weather/example_places.dart';
+import '../weather/weather_measurement.dart';
+import '../weather/weather_service.dart';
+
+enum _InputMode { manual, place, examples }
 
 class HumidityCalculatorPage extends StatefulWidget {
-  const HumidityCalculatorPage({super.key});
+  HumidityCalculatorPage({super.key, WeatherService? weatherService})
+    : weatherService = weatherService ?? OpenMeteoWeatherService();
+
+  final WeatherService weatherService;
 
   @override
   State<HumidityCalculatorPage> createState() => _HumidityCalculatorPageState();
@@ -15,9 +23,14 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
   final _temperatureController = TextEditingController(text: '21.0');
   final _humidityController = TextEditingController(text: '50');
   final _pressureController = TextEditingController();
+  final _placeController = TextEditingController();
 
+  _InputMode _inputMode = _InputMode.manual;
+  WeatherMeasurement? _measurement;
   PsychrometricResult? _result;
   String? _error;
+  String? _weatherMessage;
+  bool _isLoadingWeather = false;
 
   @override
   void initState() {
@@ -30,10 +43,19 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
     _temperatureController.dispose();
     _humidityController.dispose();
     _pressureController.dispose();
+    _placeController.dispose();
     super.dispose();
   }
 
   void _recalculate() {
+    final measurement = _manualMeasurement();
+    if (measurement == null) {
+      return;
+    }
+    _showMeasurement(measurement);
+  }
+
+  WeatherMeasurement? _manualMeasurement() {
     final temperature = _parseDecimal(_temperatureController.text);
     final humidity = _parseDecimal(_humidityController.text);
     final pressureText = _pressureController.text.trim();
@@ -46,18 +68,28 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
         _result = null;
         _error = 'Bitte Zahlenwerte eingeben.';
       });
-      return;
+      return null;
     }
 
+    final now = DateTime.now();
+    return WeatherMeasurement(
+      temperatureCelsius: temperature,
+      relativeHumidityPercent: humidity,
+      pressureHPa: pressure,
+      source: MeasurementSource.manual,
+      label: 'Manuelle Eingabe',
+      observedAt: now,
+      fetchedAt: now,
+    );
+  }
+
+  void _showMeasurement(WeatherMeasurement measurement) {
     try {
       final nextResult = Psychrometrics.calculate(
-        PsychrometricInput(
-          temperatureCelsius: temperature,
-          relativeHumidityPercent: humidity,
-          pressureHPa: pressure,
-        ),
+        measurement.toPsychrometricInput(),
       );
       setState(() {
+        _measurement = measurement;
         _result = nextResult;
         _error = null;
       });
@@ -68,6 +100,93 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
             error.message?.toString() ?? 'Eingaben ausserhalb des Bereichs.';
       });
     }
+  }
+
+  Future<void> _searchPlace() async {
+    final query = _placeController.text.trim();
+    if (query.length < 2) {
+      setState(() {
+        _inputMode = _InputMode.place;
+        _weatherMessage = 'Bitte mindestens zwei Zeichen eingeben.';
+      });
+      return;
+    }
+    await _loadWeather(
+      mode: _InputMode.place,
+      loader: () async {
+        final places = await widget.weatherService.searchPlaces(query);
+        if (places.isEmpty) {
+          throw const WeatherServiceException(
+            'Ort nicht gefunden. Bitte Schreibweise pruefen.',
+          );
+        }
+        return widget.weatherService.fetchWeatherForPlace(
+          place: places.first,
+          source: MeasurementSource.place,
+        );
+      },
+    );
+  }
+
+  void _selectInputMode(_InputMode mode) {
+    setState(() => _inputMode = mode);
+    if (mode == _InputMode.manual) {
+      _recalculate();
+    }
+  }
+
+  Future<void> _loadExamplePlace(WeatherPlace place) {
+    return _loadWeather(
+      mode: _InputMode.examples,
+      loader: () => widget.weatherService.fetchWeatherForPlace(
+        place: place,
+        source: MeasurementSource.examplePlace,
+      ),
+    );
+  }
+
+  Future<void> _loadWeather({
+    required _InputMode mode,
+    required Future<WeatherMeasurement> Function() loader,
+  }) async {
+    setState(() {
+      _inputMode = mode;
+      _isLoadingWeather = true;
+      _weatherMessage = null;
+    });
+
+    try {
+      final measurement = await loader();
+      if (!mounted) {
+        return;
+      }
+      _showMeasurement(measurement);
+      setState(() {
+        _inputMode = mode;
+        _isLoadingWeather = false;
+        _weatherMessage = '${measurement.label} geladen.';
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      final fallback = _manualMeasurement();
+      setState(() {
+        _inputMode = _InputMode.manual;
+        _isLoadingWeather = false;
+        _weatherMessage = _messageFor(error);
+      });
+      if (fallback != null) {
+        _showMeasurement(fallback);
+      }
+    }
+  }
+
+  String _messageFor(Object error) {
+    if (error is WeatherServiceException) {
+      return error.message;
+    }
+    return 'Wetterdaten konnten nicht geladen werden. Manuelle Eingabe bleibt nutzbar.';
   }
 
   double? _parseDecimal(String value) {
@@ -106,13 +225,21 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                                 temperatureController: _temperatureController,
                                 humidityController: _humidityController,
                                 pressureController: _pressureController,
+                                placeController: _placeController,
+                                inputMode: _inputMode,
+                                isLoadingWeather: _isLoadingWeather,
+                                weatherMessage: _weatherMessage,
                                 onChanged: _recalculate,
+                                onModeChanged: _selectInputMode,
+                                onSearchPlace: _searchPlace,
+                                onExamplePlaceSelected: _loadExamplePlace,
                               ),
                             ),
                             const SizedBox(width: 20),
                             Expanded(
                               child: _ResultColumn(
                                 result: result,
+                                measurement: _measurement,
                                 error: _error,
                               ),
                             ),
@@ -125,10 +252,21 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                               temperatureController: _temperatureController,
                               humidityController: _humidityController,
                               pressureController: _pressureController,
+                              placeController: _placeController,
+                              inputMode: _inputMode,
+                              isLoadingWeather: _isLoadingWeather,
+                              weatherMessage: _weatherMessage,
                               onChanged: _recalculate,
+                              onModeChanged: _selectInputMode,
+                              onSearchPlace: _searchPlace,
+                              onExamplePlaceSelected: _loadExamplePlace,
                             ),
                             const SizedBox(height: 16),
-                            _ResultColumn(result: result, error: _error),
+                            _ResultColumn(
+                              result: result,
+                              measurement: _measurement,
+                              error: _error,
+                            ),
                           ],
                         ),
                 ),
@@ -146,13 +284,27 @@ class _InputPanel extends StatelessWidget {
     required this.temperatureController,
     required this.humidityController,
     required this.pressureController,
+    required this.placeController,
+    required this.inputMode,
+    required this.isLoadingWeather,
+    required this.onModeChanged,
     required this.onChanged,
+    required this.onSearchPlace,
+    required this.onExamplePlaceSelected,
+    this.weatherMessage,
   });
 
   final TextEditingController temperatureController;
   final TextEditingController humidityController;
   final TextEditingController pressureController;
+  final TextEditingController placeController;
+  final _InputMode inputMode;
+  final bool isLoadingWeather;
+  final ValueChanged<_InputMode> onModeChanged;
   final VoidCallback onChanged;
+  final VoidCallback onSearchPlace;
+  final ValueChanged<WeatherPlace> onExamplePlaceSelected;
+  final String? weatherMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -160,11 +312,80 @@ class _InputPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Manuelle Eingabe',
-            style: Theme.of(context).textTheme.titleLarge,
+          Text('Datenquelle', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          SegmentedButton<_InputMode>(
+            segments: const [
+              ButtonSegment(
+                value: _InputMode.manual,
+                label: Text('Manuell'),
+                icon: Icon(Icons.tune),
+              ),
+              ButtonSegment(
+                value: _InputMode.place,
+                label: Text('Ort'),
+                icon: Icon(Icons.search),
+              ),
+              ButtonSegment(
+                value: _InputMode.examples,
+                label: Text('Beispiele'),
+                icon: Icon(Icons.location_city),
+              ),
+            ],
+            selected: {inputMode},
+            onSelectionChanged: (selection) => onModeChanged(selection.single),
           ),
           const SizedBox(height: 16),
+          if (inputMode == _InputMode.place) ...[
+            TextField(
+              controller: placeController,
+              decoration: const InputDecoration(
+                labelText: 'Ort suchen',
+                suffixText: 'Open-Meteo',
+              ),
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => onSearchPlace(),
+            ),
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              onPressed: isLoadingWeather ? null : onSearchPlace,
+              icon: isLoadingWeather
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.cloud_download),
+              label: const Text('Wetter laden'),
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (inputMode == _InputMode.examples) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final place in examplePlaces)
+                  ActionChip(
+                    avatar: const Icon(Icons.place, size: 18),
+                    label: Text(place.name),
+                    onPressed: isLoadingWeather
+                        ? null
+                        : () => onExamplePlaceSelected(place),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (weatherMessage != null) ...[
+            _InlineMessage(message: weatherMessage!),
+            const SizedBox(height: 16),
+          ],
+          Text(
+            'Manuelle Werte',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 12),
           _NumberField(
             controller: temperatureController,
             label: 'Temperatur',
@@ -227,10 +448,40 @@ class _NumberField extends StatelessWidget {
   }
 }
 
+class _InlineMessage extends StatelessWidget {
+  const _InlineMessage({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Text(
+          message,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSecondaryContainer,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ResultColumn extends StatelessWidget {
-  const _ResultColumn({required this.result, required this.error});
+  const _ResultColumn({
+    required this.result,
+    required this.measurement,
+    required this.error,
+  });
 
   final PsychrometricResult? result;
+  final WeatherMeasurement? measurement;
   final String? error;
 
   @override
@@ -253,7 +504,7 @@ class _ResultColumn extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _ResultPanel(result: result),
+        _ResultPanel(result: result, measurement: measurement),
         const SizedBox(height: 16),
         _HumidityChart(result: result),
       ],
@@ -262,9 +513,10 @@ class _ResultColumn extends StatelessWidget {
 }
 
 class _ResultPanel extends StatelessWidget {
-  const _ResultPanel({required this.result});
+  const _ResultPanel({required this.result, required this.measurement});
 
   final PsychrometricResult result;
+  final WeatherMeasurement? measurement;
 
   @override
   Widget build(BuildContext context) {
@@ -276,13 +528,22 @@ class _ResultPanel extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Ergebnis',
+                  measurement?.label ?? 'Ergebnis',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
               _ZonePill(zone: result.zone),
             ],
           ),
+          if (measurement != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              _measurementSubtitle(measurement!),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
           const SizedBox(height: 18),
           Wrap(
             spacing: 14,
@@ -310,6 +571,11 @@ class _ResultPanel extends StatelessWidget {
                 label: 'Druck',
                 value: '${_formatNumber(result.pressureHPa, decimals: 2)} hPa',
               ),
+              if (measurement != null)
+                _MetricTile(
+                  label: 'Datenalter',
+                  value: _formatAge(measurement!.ageAt(DateTime.now())),
+                ),
             ],
           ),
         ],
@@ -669,4 +935,26 @@ Color _zoneColor(HumidityZone zone) {
 
 String _formatNumber(double value, {int decimals = 1}) {
   return value.toStringAsFixed(decimals).replaceAll('.', ',');
+}
+
+String _measurementSubtitle(WeatherMeasurement measurement) {
+  return '${measurement.source.label} · aktualisiert ${_formatClock(measurement.fetchedAt)}';
+}
+
+String _formatClock(DateTime value) {
+  final local = value.toLocal();
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '$hour:$minute';
+}
+
+String _formatAge(Duration age) {
+  final normalized = age.isNegative ? Duration.zero : age;
+  if (normalized.inMinutes < 1) {
+    return 'gerade eben';
+  }
+  if (normalized.inHours < 1) {
+    return '${normalized.inMinutes} min';
+  }
+  return '${normalized.inHours} h';
 }

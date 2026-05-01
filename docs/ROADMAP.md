@@ -30,6 +30,8 @@ Akzeptanzkriterien:
 
 ### 1.2 Wetterdatenstrategie festlegen
 
+Status 2026-05-01: Erledigt fuer den ersten Open-Meteo-Schnitt. Ortssuche, Beispielorte und Forecast-Abruf liefern ein gemeinsames internes Messwertmodell; Fehler fallen auf manuelle Eingabe zurueck.
+
 Ziel: Einen ersten offenen Wetterdatenpfad fuer Standort- und Ortseingabe definieren.
 
 Empfehlung:
@@ -112,6 +114,8 @@ Akzeptanzkriterien:
 
 ### 3.2 Ortseingabe bauen
 
+Status 2026-05-01: Erledigt fuer MVP ohne Standortberechtigung. Freie Ortseingabe nutzt Open-Meteo Geocoding und laedt anschliessend Wetterwerte in dieselbe Ergebnisansicht.
+
 Ziel: Nutzer koennen einen Ort manuell waehlen, wenn Standort nicht gewuenscht ist.
 
 Akzeptanzkriterien:
@@ -122,6 +126,8 @@ Akzeptanzkriterien:
 - Nutzer koennen zur manuellen Eingabe wechseln.
 
 ### 3.3 Beispielorte anbieten
+
+Status 2026-05-01: Erledigt. Hamburg, Berlin, Koeln, Frankfurt am Main und Muenchen sind sichtbar und starten denselben Wetterdatenfluss.
 
 Ziel: Nutzer koennen ohne Standort und ohne freie Ortseingabe mit repraesentativen deutschen Orten starten.
 
@@ -156,6 +162,8 @@ Akzeptanzkriterien:
 
 ### 4.1 Open-Meteo Adapter implementieren
 
+Status 2026-05-01: Erledigt. Der Adapter ruft Current-Werte fuer Temperatur, relative Luftfeuchte und optional Surface Pressure ab; Fehler, Timeouts und unvollstaendige Antworten sind behandelt.
+
 Ziel: Erster Wetterdatenabruf ueber eine offene API.
 
 Akzeptanzkriterien:
@@ -166,6 +174,8 @@ Akzeptanzkriterien:
 - Der Rest der App haengt nicht direkt an Open-Meteo-spezifischen Datenstrukturen.
 
 ### 4.2 Datenquellenmodell vereinheitlichen
+
+Status 2026-05-01: Erledigt fuer manuell, Ort und Beispielort. `WeatherMeasurement` traegt Quelle, Label, Zeitstempel, Datenalter und optionalen Luftdruck.
 
 Ziel: Manuelle Eingabe, Standortwetter und Beispielort liefern dasselbe interne Datenmodell.
 
