@@ -97,6 +97,8 @@ Akzeptanzkriterien:
 
 ### 3.1 Standort-Onboarding bauen
 
+Status 2026-05-01: Erledigt fuer den MVP-Schnitt. Die App hat einen expliziten Standortmodus, fragt Standort nur nach Nutzeraktion an, nutzt Koordinaten fuer denselben Open-Meteo-Wetterfluss und zeigt bei Ablehnung, deaktivierten Diensten oder Timeout normale Ortssuche/manuelle Werte als Fallback. iOS-, Android- und macOS-Konfigurationen fuer die Geolocator-Berechtigung sind vorbereitet; der echte iPhone-Standortfluss wurde auf Device erfolgreich getestet. Android bleibt bis zur lokalen SDK-Ergaenzung offen.
+
 Ziel: Der Default-Start nutzt lokale Daten, wenn der Nutzer zustimmt.
 
 Flow:
@@ -313,6 +315,8 @@ Akzeptanzkriterien:
 - Wetter-API-Fehlerfall wurde getestet.
 - Standort-Ablehnung wurde getestet.
 - Kleine Displays wurden geprueft.
+
+Hinweis 2026-05-01: Standort-Ablehnung und Standort-Zustimmung sind technisch per Fake-Service getestet; der echte iPhone-Permission-/GPS-/Wetterpfad wurde manuell erfolgreich geprueft. Android-Permission-Dialog und GPS-Abruf brauchen nach Installation der Android cmdline-tools noch Device-Validierung.
 
 ## 9. Nach dem MVP: Govee H5075
 

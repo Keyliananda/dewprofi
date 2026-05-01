@@ -5,11 +5,12 @@ import 'package:flutter/material.dart';
 
 import '../../core/storage/calculator_preferences_store.dart';
 import '../../core/psychrometrics/psychrometrics.dart';
+import '../location/location_service.dart';
 import '../weather/example_places.dart';
 import '../weather/weather_measurement.dart';
 import '../weather/weather_service.dart';
 
-enum _InputMode { manual, place, examples }
+enum _InputMode { manual, location, place, examples }
 
 enum _DetailMode { simple, pro }
 
@@ -18,13 +19,16 @@ class HumidityCalculatorPage extends StatefulWidget {
     super.key,
     WeatherService? weatherService,
     CalculatorPreferencesStore? preferencesStore,
+    LocationService? locationService,
   }) : weatherService = weatherService ?? OpenMeteoWeatherService(),
        preferencesStore =
            preferencesStore ??
-           const SharedPreferencesCalculatorPreferencesStore();
+           const SharedPreferencesCalculatorPreferencesStore(),
+       locationService = locationService ?? GeolocatorLocationService();
 
   final WeatherService weatherService;
   final CalculatorPreferencesStore preferencesStore;
+  final LocationService locationService;
 
   @override
   State<HumidityCalculatorPage> createState() => _HumidityCalculatorPageState();
@@ -235,10 +239,28 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
     );
   }
 
+  Future<void> _loadCurrentLocation() {
+    return _loadWeather(
+      mode: _InputMode.location,
+      fallbackMode: _InputMode.place,
+      applyManualFallback: false,
+      loader: () async {
+        final coordinates = await widget.locationService.currentCoordinates();
+        return widget.weatherService.fetchWeather(
+          coordinates: coordinates,
+          source: MeasurementSource.location,
+          label: 'Aktueller Standort',
+        );
+      },
+    );
+  }
+
   Future<void> _loadWeather({
     required _InputMode mode,
     required Future<WeatherMeasurement> Function() loader,
     WeatherPlace? Function()? selectedPlaceProvider,
+    _InputMode fallbackMode = _InputMode.manual,
+    bool applyManualFallback = true,
   }) async {
     setState(() {
       _inputMode = mode;
@@ -262,9 +284,9 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
       if (!mounted) {
         return;
       }
-      final fallback = _manualMeasurement();
+      final fallback = applyManualFallback ? _manualMeasurement() : null;
       setState(() {
-        _inputMode = _InputMode.manual;
+        _inputMode = fallbackMode;
         _isLoadingWeather = false;
         _weatherMessage = _messageFor(error);
         _selectedPlace = null;
@@ -316,7 +338,7 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
   bool get _canRefreshStoredWeather =>
       _selectedPlace != null &&
       _measurement != null &&
-      _inputMode != _InputMode.manual &&
+      (_inputMode == _InputMode.place || _inputMode == _InputMode.examples) &&
       !_isLoadingWeather;
 
   void _toggleInputExpanded() {
@@ -359,6 +381,9 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
 
   String _messageFor(Object error) {
     if (error is WeatherServiceException) {
+      return error.message;
+    }
+    if (error is LocationServiceException) {
       return error.message;
     }
     return 'Wetterdaten konnten nicht geladen werden. Manuelle Eingabe bleibt nutzbar.';
@@ -412,6 +437,7 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                                 onToggleExpanded: _toggleInputExpanded,
                                 onChanged: _recalculate,
                                 onModeChanged: _selectInputMode,
+                                onUseLocation: _loadCurrentLocation,
                                 onSearchPlace: _searchPlace,
                                 onExamplePlaceSelected: _loadExamplePlace,
                               ),
@@ -449,6 +475,7 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                               onToggleExpanded: _toggleInputExpanded,
                               onChanged: _recalculate,
                               onModeChanged: _selectInputMode,
+                              onUseLocation: _loadCurrentLocation,
                               onSearchPlace: _searchPlace,
                               onExamplePlaceSelected: _loadExamplePlace,
                             ),
@@ -487,6 +514,7 @@ class _InputPanel extends StatelessWidget {
     required this.canRefreshWeather,
     required this.onToggleExpanded,
     required this.onModeChanged,
+    required this.onUseLocation,
     required this.onChanged,
     required this.onSearchPlace,
     required this.onRefreshWeather,
@@ -506,6 +534,7 @@ class _InputPanel extends StatelessWidget {
   final bool canRefreshWeather;
   final VoidCallback onToggleExpanded;
   final ValueChanged<_InputMode> onModeChanged;
+  final VoidCallback onUseLocation;
   final VoidCallback onChanged;
   final VoidCallback onSearchPlace;
   final VoidCallback onRefreshWeather;
@@ -536,6 +565,11 @@ class _InputPanel extends StatelessWidget {
                   icon: Icon(Icons.tune),
                 ),
                 ButtonSegment(
+                  value: _InputMode.location,
+                  label: Text('Standort'),
+                  icon: Icon(Icons.my_location),
+                ),
+                ButtonSegment(
                   value: _InputMode.place,
                   label: Text('Ort'),
                   icon: Icon(Icons.search),
@@ -551,6 +585,25 @@ class _InputPanel extends StatelessWidget {
                   onModeChanged(selection.single),
             ),
             const SizedBox(height: 16),
+            if (inputMode == _InputMode.location) ...[
+              Text(
+                'Standort nutzt einmalig deine aktuelle Position, um Wetterwerte fuer deine Umgebung zu laden.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 10),
+              FilledButton.icon(
+                onPressed: isLoadingWeather ? null : onUseLocation,
+                icon: isLoadingWeather
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.my_location),
+                label: const Text('Standort verwenden'),
+              ),
+              const SizedBox(height: 16),
+            ],
             if (inputMode == _InputMode.place) ...[
               TextField(
                 controller: placeController,

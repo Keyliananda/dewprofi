@@ -26,6 +26,8 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Dewprofi nutzt deinen Standort nur nach deiner Zustimmung, um lokale Wetterwerte zu laden.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

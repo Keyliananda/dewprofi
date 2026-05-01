@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:dewprofi/app/dewprofi_app.dart';
 import 'package:dewprofi/core/storage/calculator_preferences_store.dart';
 import 'package:dewprofi/core/psychrometrics/psychrometrics.dart';
+import 'package:dewprofi/features/location/location_service.dart';
 import 'package:dewprofi/features/weather/weather_measurement.dart';
 import 'package:dewprofi/features/weather/weather_service.dart';
 import 'package:flutter/gestures.dart';
@@ -130,6 +131,91 @@ void main() {
     expect(find.textContaining('ort'), findsWidgets);
   });
 
+  testWidgets('location mode waits for explicit use action', (tester) async {
+    final locationService = _FakeLocationService();
+    final weatherService = _FakeWeatherService(
+      measurement: _measurement(
+        label: 'Aktueller Standort',
+        source: MeasurementSource.location,
+      ),
+    );
+    await _pumpCalculator(
+      tester,
+      weatherService: weatherService,
+      locationService: locationService,
+    );
+    await _expandInput(tester);
+
+    await tester.tap(find.text('Standort'));
+    await tester.pumpAndSettle();
+
+    expect(locationService.requestCount, 0);
+    expect(weatherService.fetchCount, 0);
+    expect(find.text('Standort verwenden'), findsOneWidget);
+  });
+
+  testWidgets('location mode loads weather through shared result view', (
+    tester,
+  ) async {
+    final locationService = _FakeLocationService(
+      coordinates: const WeatherCoordinates(latitude: 53.55, longitude: 9.99),
+    );
+    final weatherService = _FakeWeatherService(
+      measurement: _measurement(
+        label: 'Aktueller Standort',
+        source: MeasurementSource.location,
+      ),
+    );
+    await _pumpCalculator(
+      tester,
+      weatherService: weatherService,
+      locationService: locationService,
+    );
+    await _expandInput(tester);
+
+    await tester.tap(find.text('Standort'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Standort verwenden'));
+    await tester.pumpAndSettle();
+
+    expect(locationService.requestCount, 1);
+    expect(weatherService.lastCoordinates?.latitude, 53.55);
+    expect(weatherService.lastCoordinates?.longitude, 9.99);
+    expect(find.text('Aktueller Standort'), findsOneWidget);
+    expect(find.textContaining('standort'), findsWidgets);
+  });
+
+  testWidgets('location errors fall back to place search', (tester) async {
+    final locationService = _FakeLocationService(
+      error: const LocationServiceException(
+        'Standortfreigabe wurde abgelehnt. Du kannst stattdessen einen Ort suchen.',
+      ),
+    );
+    final weatherService = _FakeWeatherService();
+    await _pumpCalculator(
+      tester,
+      weatherService: weatherService,
+      locationService: locationService,
+    );
+    await _expandInput(tester);
+
+    await tester.tap(find.text('Standort'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Standort verwenden'));
+    await tester.pumpAndSettle();
+
+    expect(locationService.requestCount, 1);
+    expect(weatherService.fetchCount, 0);
+    expect(
+      find.text(
+        'Standortfreigabe wurde abgelehnt. Du kannst stattdessen einen Ort suchen.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(TextField, 'Ort suchen'), findsOneWidget);
+    expect(find.text('Manuelle Eingabe'), findsOneWidget);
+  });
+
   testWidgets('weather errors fall back to manual input', (tester) async {
     final weatherService = _FakeWeatherService(
       error: const WeatherServiceException('Ort nicht gefunden.'),
@@ -207,6 +293,38 @@ void main() {
     );
     expect(find.text('Aktualisieren'), findsOneWidget);
   });
+
+  testWidgets(
+    'restores saved location values without startup location request',
+    (tester) async {
+      final weatherService = _FakeWeatherService();
+      final locationService = _FakeLocationService();
+
+      await _pumpCalculator(
+        tester,
+        weatherService: weatherService,
+        locationService: locationService,
+        initialPreferences: CalculatorPreferences(
+          inputMode: 'location',
+          detailMode: 'simple',
+          manualTemperatureText: '21.0',
+          manualHumidityText: '50',
+          manualPressureText: '',
+          isInputExpanded: true,
+          measurement: _measurement(
+            label: 'Aktueller Standort',
+            source: MeasurementSource.location,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(locationService.requestCount, 0);
+      expect(weatherService.fetchCount, 0);
+      expect(find.text('Aktueller Standort'), findsOneWidget);
+      expect(find.text('Aktualisieren'), findsNothing);
+    },
+  );
 
   testWidgets('saves changed manual inputs through the preferences store', (
     tester,
@@ -301,12 +419,14 @@ Future<void> _expandInput(WidgetTester tester) async {
 Future<_FakePreferencesStore> _pumpCalculator(
   WidgetTester tester, {
   WeatherService? weatherService,
+  LocationService? locationService,
   CalculatorPreferences? initialPreferences,
 }) async {
   final preferencesStore = _FakePreferencesStore(initialPreferences);
   await tester.pumpWidget(
     DewprofiApp(
       weatherService: weatherService,
+      locationService: locationService,
       preferencesStore: preferencesStore,
     ),
   );
@@ -413,6 +533,7 @@ class _FakeWeatherService implements WeatherService {
   final WeatherMeasurement measurement;
   final Object? error;
   String? lastSearchQuery;
+  WeatherCoordinates? lastCoordinates;
   int searchCount = 0;
   int fetchCount = 0;
 
@@ -441,6 +562,7 @@ class _FakeWeatherService implements WeatherService {
     required String label,
   }) async {
     fetchCount += 1;
+    lastCoordinates = coordinates;
     final error = this.error;
     if (error != null) {
       throw error;
@@ -458,6 +580,30 @@ class _FakeWeatherService implements WeatherService {
       source: source,
       label: place.displayName,
     );
+  }
+}
+
+class _FakeLocationService implements LocationService {
+  _FakeLocationService({
+    this.coordinates = const WeatherCoordinates(
+      latitude: 53.55,
+      longitude: 9.99,
+    ),
+    this.error,
+  });
+
+  final WeatherCoordinates coordinates;
+  final Object? error;
+  int requestCount = 0;
+
+  @override
+  Future<WeatherCoordinates> currentCoordinates() async {
+    requestCount += 1;
+    final error = this.error;
+    if (error != null) {
+      throw error;
+    }
+    return coordinates;
   }
 }
 

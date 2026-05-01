@@ -5,9 +5,10 @@ Flutter-App fuer den visuellen Feuchte-Rechner-MVP. Zusaetzlich liegen ein Larav
 ## Was aktuell funktioniert
 
 - Manuelle Eingabe von Temperatur, relativer Luftfeuchte und optionalem Luftdruck.
-- Datenquelle kann zwischen manueller Eingabe, Ortssuche und fuenf Beispielorten wechseln.
-- Open-Meteo liefert Wetterwerte fuer Orte/Koordinaten; bei Fehlern bleibt der manuelle Pfad nutzbar.
+- Datenquelle kann zwischen manueller Eingabe, Standort, Ortssuche und fuenf Beispielorten wechseln.
+- Open-Meteo liefert Wetterwerte fuer Standort, Orte und Koordinaten; bei Fehlern bleibt der manuelle Pfad nutzbar.
 - Letzte Quelle, Werte, Ort/Beispielort und Einfach-/Profi-Modus werden lokal wiederhergestellt.
+- Standort wird nicht beim Appstart abgefragt, sondern nur nach explizitem Tippen auf `Standort verwenden`.
 - Lokale Berechnung von Taupunkt und absoluter Feuchte ohne Netzwerk.
 - Erste Ergebnisvisualisierung mit Feuchtezone und Temperatur-Feuchte-Grafik.
 - iOS-, Android-, macOS- und Web-Projektstruktur ist angelegt.
@@ -27,7 +28,9 @@ flutter test
 flutter analyze
 ```
 
-Der Open-Meteo-Pfad nutzt Netzwerk nur zur Laufzeit. Tests mocken Geocoding und Forecast, damit sie offline stabil bleiben.
+Der Open-Meteo-Pfad nutzt Netzwerk nur zur Laufzeit. Tests mocken Standort, Geocoding und Forecast, damit sie offline stabil bleiben.
+
+Der Standortmodus ist auf dem iPhone manuell geprueft: Auswahl von `Standort`, explizites `Standort verwenden`, iOS-Berechtigungsdialog, GPS-basierter Wetterabruf und Fallback-Verhalten bleiben normale App-Pfade. Android ist lokal noch nicht lauffaehig, weil die Android cmdline-tools fehlen.
 
 Auf dem angeschlossenen iPhone starten:
 
