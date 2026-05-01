@@ -263,6 +263,8 @@ Akzeptanzkriterien:
 
 ### 7.1 Letzte Eingaben und Praeferenzen speichern
 
+Status 2026-05-01: Erledigt fuer den MVP-Rechner. Die App speichert lokal die letzte Quelle, manuelle Werte inklusive optionalem Druck, Ort/Beispielort mit Label und Koordinaten, den letzten Wetterwert sowie Einfach-/Profi-Modus und den offenen Eingabebereich.
+
 Ziel: Nutzer starten nicht jedes Mal bei null.
 
 Akzeptanzkriterien:
@@ -273,6 +275,8 @@ Akzeptanzkriterien:
 - Keine Konto-Pflicht.
 
 ### 7.2 Datenschutzfreundlichen Appstart definieren
+
+Status 2026-05-01: Erledigt fuer den aktuellen Quellenumfang. Der Start zeigt gespeicherte lokale Werte ohne Account, Standortberechtigung oder automatische Netzwerkabfrage; gespeicherte Wetterquellen koennen explizit aktualisiert werden.
 
 Ziel: Die App nutzt lokale Daten sinnvoll, ohne Standort oder Konto zu erzwingen.
 

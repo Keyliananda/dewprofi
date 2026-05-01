@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/storage/calculator_preferences_store.dart';
 import '../../core/psychrometrics/psychrometrics.dart';
 import '../weather/example_places.dart';
 import '../weather/weather_measurement.dart';
@@ -13,10 +14,17 @@ enum _InputMode { manual, place, examples }
 enum _DetailMode { simple, pro }
 
 class HumidityCalculatorPage extends StatefulWidget {
-  HumidityCalculatorPage({super.key, WeatherService? weatherService})
-    : weatherService = weatherService ?? OpenMeteoWeatherService();
+  HumidityCalculatorPage({
+    super.key,
+    WeatherService? weatherService,
+    CalculatorPreferencesStore? preferencesStore,
+  }) : weatherService = weatherService ?? OpenMeteoWeatherService(),
+       preferencesStore =
+           preferencesStore ??
+           const SharedPreferencesCalculatorPreferencesStore();
 
   final WeatherService weatherService;
+  final CalculatorPreferencesStore preferencesStore;
 
   @override
   State<HumidityCalculatorPage> createState() => _HumidityCalculatorPageState();
@@ -35,12 +43,15 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
   String? _weatherMessage;
   bool _isLoadingWeather = false;
   bool _isInputExpanded = false;
+  bool _hasLoadedPreferences = false;
   _DetailMode _detailMode = _DetailMode.simple;
+  WeatherPlace? _selectedPlace;
 
   @override
   void initState() {
     super.initState();
-    _recalculate();
+    _recalculate(persist: false);
+    _restorePreferences();
   }
 
   @override
@@ -52,12 +63,51 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
     super.dispose();
   }
 
-  void _recalculate() {
+  Future<void> _restorePreferences() async {
+    final preferences = await widget.preferencesStore.load();
+    if (!mounted) {
+      return;
+    }
+
+    if (preferences == null) {
+      setState(() => _hasLoadedPreferences = true);
+      return;
+    }
+
+    var inputMode = _inputModeFromPreference(preferences.inputMode);
+    if (inputMode != _InputMode.manual && preferences.measurement == null) {
+      inputMode = _InputMode.manual;
+    }
+    final detailMode = _detailModeFromPreference(preferences.detailMode);
+    _temperatureController.text = preferences.manualTemperatureText;
+    _humidityController.text = preferences.manualHumidityText;
+    _pressureController.text = preferences.manualPressureText;
+    _placeController.text =
+        preferences.placeQuery ?? preferences.selectedPlace?.displayName ?? '';
+    _selectedPlace = preferences.selectedPlace;
+
+    setState(() {
+      _inputMode = inputMode;
+      _detailMode = detailMode;
+      _isInputExpanded = preferences.isInputExpanded;
+      _hasLoadedPreferences = true;
+      _weatherMessage = _restoredMessageFor(inputMode, preferences.measurement);
+    });
+
+    final measurement = preferences.measurement;
+    if (inputMode != _InputMode.manual && measurement != null) {
+      _showMeasurement(measurement, persist: false);
+    } else {
+      _recalculate(persist: false);
+    }
+  }
+
+  void _recalculate({bool persist = true}) {
     final measurement = _manualMeasurement();
     if (measurement == null) {
       return;
     }
-    _showMeasurement(measurement);
+    _showMeasurement(measurement, persist: persist);
   }
 
   WeatherMeasurement? _manualMeasurement() {
@@ -88,7 +138,7 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
     );
   }
 
-  void _showMeasurement(WeatherMeasurement measurement) {
+  void _showMeasurement(WeatherMeasurement measurement, {bool persist = true}) {
     try {
       final nextResult = Psychrometrics.calculate(
         measurement.toPsychrometricInput(),
@@ -98,6 +148,9 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
         _result = nextResult;
         _error = null;
       });
+      if (persist) {
+        _persistPreferences(measurement: measurement);
+      }
     } on ArgumentError catch (error) {
       setState(() {
         _result = null;
@@ -129,6 +182,7 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
     setState(() {
       _inputMode = _InputMode.manual;
       _weatherMessage = 'Diagrammwert uebernommen.';
+      _selectedPlace = null;
     });
     _showMeasurement(measurement);
   }
@@ -142,8 +196,10 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
       });
       return;
     }
+    WeatherPlace? selectedPlace;
     await _loadWeather(
       mode: _InputMode.place,
+      selectedPlaceProvider: () => selectedPlace,
       loader: () async {
         final places = await widget.weatherService.searchPlaces(query);
         if (places.isEmpty) {
@@ -151,8 +207,9 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
             'Ort nicht gefunden. Bitte Schreibweise pruefen.',
           );
         }
+        selectedPlace = places.first;
         return widget.weatherService.fetchWeatherForPlace(
-          place: places.first,
+          place: selectedPlace!,
           source: MeasurementSource.place,
         );
       },
@@ -161,6 +218,7 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
 
   void _selectInputMode(_InputMode mode) {
     setState(() => _inputMode = mode);
+    _persistPreferences(measurement: _measurement);
     if (mode == _InputMode.manual) {
       _recalculate();
     }
@@ -169,6 +227,7 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
   Future<void> _loadExamplePlace(WeatherPlace place) {
     return _loadWeather(
       mode: _InputMode.examples,
+      selectedPlaceProvider: () => place,
       loader: () => widget.weatherService.fetchWeatherForPlace(
         place: place,
         source: MeasurementSource.examplePlace,
@@ -179,6 +238,7 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
   Future<void> _loadWeather({
     required _InputMode mode,
     required Future<WeatherMeasurement> Function() loader,
+    WeatherPlace? Function()? selectedPlaceProvider,
   }) async {
     setState(() {
       _inputMode = mode;
@@ -191,6 +251,7 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
       if (!mounted) {
         return;
       }
+      _selectedPlace = selectedPlaceProvider?.call();
       _showMeasurement(measurement);
       setState(() {
         _inputMode = mode;
@@ -206,11 +267,94 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
         _inputMode = _InputMode.manual;
         _isLoadingWeather = false;
         _weatherMessage = _messageFor(error);
+        _selectedPlace = null;
       });
       if (fallback != null) {
         _showMeasurement(fallback);
       }
     }
+  }
+
+  Future<void> _refreshStoredWeather() async {
+    final place = _selectedPlace;
+    final measurement = _measurement;
+    if (place == null || measurement == null) {
+      return;
+    }
+    await _loadWeather(
+      mode: _inputMode,
+      selectedPlaceProvider: () => place,
+      loader: () => widget.weatherService.fetchWeatherForPlace(
+        place: place,
+        source: measurement.source,
+      ),
+    );
+  }
+
+  Future<void> _persistPreferences({WeatherMeasurement? measurement}) async {
+    if (!_hasLoadedPreferences) {
+      return;
+    }
+
+    await widget.preferencesStore.save(
+      CalculatorPreferences(
+        inputMode: _inputMode.name,
+        detailMode: _detailMode.name,
+        manualTemperatureText: _temperatureController.text,
+        manualHumidityText: _humidityController.text,
+        manualPressureText: _pressureController.text,
+        isInputExpanded: _isInputExpanded,
+        placeQuery: _placeController.text.trim().isEmpty
+            ? null
+            : _placeController.text.trim(),
+        selectedPlace: _selectedPlace,
+        measurement: measurement ?? _measurement,
+      ),
+    );
+  }
+
+  bool get _canRefreshStoredWeather =>
+      _selectedPlace != null &&
+      _measurement != null &&
+      _inputMode != _InputMode.manual &&
+      !_isLoadingWeather;
+
+  void _toggleInputExpanded() {
+    setState(() => _isInputExpanded = !_isInputExpanded);
+    _persistPreferences();
+  }
+
+  void _changeDetailMode(_DetailMode mode) {
+    setState(() => _detailMode = mode);
+    _persistPreferences();
+  }
+
+  _InputMode _inputModeFromPreference(String value) {
+    for (final mode in _InputMode.values) {
+      if (mode.name == value) {
+        return mode;
+      }
+    }
+    return _InputMode.manual;
+  }
+
+  _DetailMode _detailModeFromPreference(String value) {
+    for (final mode in _DetailMode.values) {
+      if (mode.name == value) {
+        return mode;
+      }
+    }
+    return _DetailMode.simple;
+  }
+
+  String? _restoredMessageFor(
+    _InputMode inputMode,
+    WeatherMeasurement? measurement,
+  ) {
+    if (inputMode == _InputMode.manual || measurement == null) {
+      return null;
+    }
+    return 'Gespeicherte Wetterwerte vom letzten Abruf.';
   }
 
   String _messageFor(Object error) {
@@ -263,9 +407,9 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                                 isExpanded: _isInputExpanded,
                                 isLoadingWeather: _isLoadingWeather,
                                 weatherMessage: _weatherMessage,
-                                onToggleExpanded: () => setState(
-                                  () => _isInputExpanded = !_isInputExpanded,
-                                ),
+                                canRefreshWeather: _canRefreshStoredWeather,
+                                onRefreshWeather: _refreshStoredWeather,
+                                onToggleExpanded: _toggleInputExpanded,
                                 onChanged: _recalculate,
                                 onModeChanged: _selectInputMode,
                                 onSearchPlace: _searchPlace,
@@ -279,8 +423,7 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                                 measurement: _measurement,
                                 error: _error,
                                 detailMode: _detailMode,
-                                onDetailModeChanged: (mode) =>
-                                    setState(() => _detailMode = mode),
+                                onDetailModeChanged: _changeDetailMode,
                                 onChartMeasurementChanged:
                                     _applyChartMeasurement,
                               ),
@@ -301,9 +444,9 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                               isExpanded: _isInputExpanded,
                               isLoadingWeather: _isLoadingWeather,
                               weatherMessage: _weatherMessage,
-                              onToggleExpanded: () => setState(
-                                () => _isInputExpanded = !_isInputExpanded,
-                              ),
+                              canRefreshWeather: _canRefreshStoredWeather,
+                              onRefreshWeather: _refreshStoredWeather,
+                              onToggleExpanded: _toggleInputExpanded,
                               onChanged: _recalculate,
                               onModeChanged: _selectInputMode,
                               onSearchPlace: _searchPlace,
@@ -315,8 +458,7 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                               measurement: _measurement,
                               error: _error,
                               detailMode: _detailMode,
-                              onDetailModeChanged: (mode) =>
-                                  setState(() => _detailMode = mode),
+                              onDetailModeChanged: _changeDetailMode,
                               onChartMeasurementChanged: _applyChartMeasurement,
                             ),
                           ],
@@ -342,10 +484,12 @@ class _InputPanel extends StatelessWidget {
     required this.inputMode,
     required this.isExpanded,
     required this.isLoadingWeather,
+    required this.canRefreshWeather,
     required this.onToggleExpanded,
     required this.onModeChanged,
     required this.onChanged,
     required this.onSearchPlace,
+    required this.onRefreshWeather,
     required this.onExamplePlaceSelected,
     this.weatherMessage,
   });
@@ -359,10 +503,12 @@ class _InputPanel extends StatelessWidget {
   final _InputMode inputMode;
   final bool isExpanded;
   final bool isLoadingWeather;
+  final bool canRefreshWeather;
   final VoidCallback onToggleExpanded;
   final ValueChanged<_InputMode> onModeChanged;
   final VoidCallback onChanged;
   final VoidCallback onSearchPlace;
+  final VoidCallback onRefreshWeather;
   final ValueChanged<WeatherPlace> onExamplePlaceSelected;
   final String? weatherMessage;
 
@@ -448,6 +594,14 @@ class _InputPanel extends StatelessWidget {
             ],
             if (weatherMessage != null) ...[
               _InlineMessage(message: weatherMessage!),
+              if (canRefreshWeather) ...[
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: onRefreshWeather,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Aktualisieren'),
+                ),
+              ],
               const SizedBox(height: 16),
             ],
             Text(

@@ -7,6 +7,7 @@ Flutter-App fuer den visuellen Feuchte-Rechner-MVP. Zusaetzlich liegen ein Larav
 - Manuelle Eingabe von Temperatur, relativer Luftfeuchte und optionalem Luftdruck.
 - Datenquelle kann zwischen manueller Eingabe, Ortssuche und fuenf Beispielorten wechseln.
 - Open-Meteo liefert Wetterwerte fuer Orte/Koordinaten; bei Fehlern bleibt der manuelle Pfad nutzbar.
+- Letzte Quelle, Werte, Ort/Beispielort und Einfach-/Profi-Modus werden lokal wiederhergestellt.
 - Lokale Berechnung von Taupunkt und absoluter Feuchte ohne Netzwerk.
 - Erste Ergebnisvisualisierung mit Feuchtezone und Temperatur-Feuchte-Grafik.
 - iOS-, Android-, macOS- und Web-Projektstruktur ist angelegt.

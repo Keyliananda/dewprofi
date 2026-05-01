@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:dewprofi/app/dewprofi_app.dart';
+import 'package:dewprofi/core/storage/calculator_preferences_store.dart';
 import 'package:dewprofi/core/psychrometrics/psychrometrics.dart';
 import 'package:dewprofi/features/weather/weather_measurement.dart';
 import 'package:dewprofi/features/weather/weather_service.dart';
@@ -10,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets('manual calculator renders default result', (tester) async {
-    await tester.pumpWidget(const DewprofiApp());
+    await _pumpCalculator(tester);
 
     expect(find.text('Manuelle Eingabe'), findsOneWidget);
     expect(find.text('Taupunkt'), findsOneWidget);
@@ -22,7 +23,7 @@ void main() {
   testWidgets('pro mode reveals extended psychrometric details', (
     tester,
   ) async {
-    await tester.pumpWidget(const DewprofiApp());
+    await _pumpCalculator(tester);
 
     await _switchToProMode(tester);
 
@@ -37,7 +38,7 @@ void main() {
   });
 
   testWidgets('manual input updates the humidity zone', (tester) async {
-    await tester.pumpWidget(const DewprofiApp());
+    await _pumpCalculator(tester);
     await _expandInput(tester);
 
     await tester.enterText(
@@ -50,7 +51,7 @@ void main() {
   });
 
   testWidgets('optional pressure accepts comma decimals', (tester) async {
-    await tester.pumpWidget(const DewprofiApp());
+    await _pumpCalculator(tester);
     await _expandInput(tester);
 
     await tester.enterText(
@@ -78,7 +79,7 @@ void main() {
         source: MeasurementSource.examplePlace,
       ),
     );
-    await tester.pumpWidget(DewprofiApp(weatherService: weatherService));
+    await _pumpCalculator(tester, weatherService: weatherService);
     await _expandInput(tester);
 
     await tester.tap(find.text('Beispiele'));
@@ -98,9 +99,10 @@ void main() {
     await _switchToProMode(tester);
 
     expect(find.text('Datenalter'), findsOneWidget);
-    expect(find.text('18,0 °C'), findsOneWidget);
+    expect(find.text('18,0 °C', skipOffstage: false), findsOneWidget);
 
-    await _scrollToTop(tester);
+    await tester.ensureVisible(find.text('Datenquelle'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Manuell'));
     await tester.pumpAndSettle();
 
@@ -114,7 +116,7 @@ void main() {
     final weatherService = _FakeWeatherService(
       measurement: _measurement(label: 'Hamburg, Hamburg'),
     );
-    await tester.pumpWidget(DewprofiApp(weatherService: weatherService));
+    await _pumpCalculator(tester, weatherService: weatherService);
     await _expandInput(tester);
 
     await tester.tap(find.text('Ort'));
@@ -132,7 +134,7 @@ void main() {
     final weatherService = _FakeWeatherService(
       error: const WeatherServiceException('Ort nicht gefunden.'),
     );
-    await tester.pumpWidget(DewprofiApp(weatherService: weatherService));
+    await _pumpCalculator(tester, weatherService: weatherService);
     await _expandInput(tester);
 
     await tester.tap(find.text('Ort'));
@@ -146,8 +148,85 @@ void main() {
     expect(find.text('21,0 °C'), findsOneWidget);
   });
 
+  testWidgets('restores manual values and detail preference locally', (
+    tester,
+  ) async {
+    await _pumpCalculator(
+      tester,
+      initialPreferences: const CalculatorPreferences(
+        inputMode: 'manual',
+        detailMode: 'pro',
+        manualTemperatureText: '19,5',
+        manualHumidityText: '75',
+        manualPressureText: '990,5',
+        isInputExpanded: true,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('19,5 °C'), findsOneWidget);
+    expect(find.text('75,0 %'), findsOneWidget);
+    expect(find.text('990,50 hPa'), findsOneWidget);
+    expect(find.text('Absolute Feuchte'), findsOneWidget);
+  });
+
+  testWidgets('restores saved weather without startup network request', (
+    tester,
+  ) async {
+    const selectedPlace = WeatherPlace(
+      name: 'Hamburg',
+      country: 'Deutschland',
+      admin1: 'Hamburg',
+      coordinates: WeatherCoordinates(latitude: 53.55, longitude: 9.99),
+    );
+    final weatherService = _FakeWeatherService();
+
+    await _pumpCalculator(
+      tester,
+      weatherService: weatherService,
+      initialPreferences: CalculatorPreferences(
+        inputMode: 'place',
+        detailMode: 'simple',
+        manualTemperatureText: '21.0',
+        manualHumidityText: '50',
+        manualPressureText: '',
+        isInputExpanded: true,
+        placeQuery: 'Hamburg',
+        selectedPlace: selectedPlace,
+        measurement: _measurement(label: 'Hamburg, Hamburg'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(weatherService.searchCount, 0);
+    expect(weatherService.fetchCount, 0);
+    expect(find.text('Hamburg, Hamburg'), findsOneWidget);
+    expect(
+      find.text('Gespeicherte Wetterwerte vom letzten Abruf.'),
+      findsOneWidget,
+    );
+    expect(find.text('Aktualisieren'), findsOneWidget);
+  });
+
+  testWidgets('saves changed manual inputs through the preferences store', (
+    tester,
+  ) async {
+    final store = await _pumpCalculator(tester);
+    await _expandInput(tester);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Temperatur'),
+      '18,4',
+    );
+    await tester.pumpAndSettle();
+
+    expect(store.saved?.inputMode, 'manual');
+    expect(store.saved?.manualTemperatureText, '18,4');
+    expect(store.saved?.manualHumidityText, '50');
+  });
+
   testWidgets('chart drag applies rounded manual values', (tester) async {
-    await tester.pumpWidget(const DewprofiApp());
+    await _pumpCalculator(tester);
 
     await _dragChartPoint(
       tester,
@@ -165,7 +244,7 @@ void main() {
   testWidgets('curve lock drags the point along the existing humidity curve', (
     tester,
   ) async {
-    await tester.pumpWidget(const DewprofiApp());
+    await _pumpCalculator(tester);
 
     await tester.tap(find.byKey(const ValueKey('chart-curve-lock-button')));
     await tester.pumpAndSettle();
@@ -192,7 +271,7 @@ void main() {
   });
 
   testWidgets('chart wheel zoom enables reset view button', (tester) async {
-    await tester.pumpWidget(const DewprofiApp());
+    await _pumpCalculator(tester);
 
     final resetButton = find.byKey(const ValueKey('chart-reset-view-button'));
     expect(tester.widget<IconButton>(resetButton).onPressed, isNull);
@@ -219,22 +298,27 @@ Future<void> _expandInput(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _switchToProMode(WidgetTester tester) async {
-  final proMode = find.text('Profi');
-  for (var attempt = 0; attempt < 10; attempt += 1) {
-    final center = tester.getCenter(proMode);
-    if (center.dy > 0 && center.dy < 580) {
-      break;
-    }
-    await tester.drag(find.byType(ListView), const Offset(0, -140));
-    await tester.pump();
-  }
-  await tester.tap(proMode);
-  await tester.pumpAndSettle();
+Future<_FakePreferencesStore> _pumpCalculator(
+  WidgetTester tester, {
+  WeatherService? weatherService,
+  CalculatorPreferences? initialPreferences,
+}) async {
+  final preferencesStore = _FakePreferencesStore(initialPreferences);
+  await tester.pumpWidget(
+    DewprofiApp(
+      weatherService: weatherService,
+      preferencesStore: preferencesStore,
+    ),
+  );
+  await tester.pump();
+  return preferencesStore;
 }
 
-Future<void> _scrollToTop(WidgetTester tester) async {
-  await tester.drag(find.byType(ListView), const Offset(0, 600));
+Future<void> _switchToProMode(WidgetTester tester) async {
+  final proMode = find.text('Profi');
+  await tester.ensureVisible(proMode);
+  await tester.pumpAndSettle();
+  await tester.tap(proMode);
   await tester.pumpAndSettle();
 }
 
@@ -329,9 +413,12 @@ class _FakeWeatherService implements WeatherService {
   final WeatherMeasurement measurement;
   final Object? error;
   String? lastSearchQuery;
+  int searchCount = 0;
+  int fetchCount = 0;
 
   @override
   Future<List<WeatherPlace>> searchPlaces(String query) async {
+    searchCount += 1;
     lastSearchQuery = query;
     final error = this.error;
     if (error != null) {
@@ -353,6 +440,7 @@ class _FakeWeatherService implements WeatherService {
     required MeasurementSource source,
     required String label,
   }) async {
+    fetchCount += 1;
     final error = this.error;
     if (error != null) {
       throw error;
@@ -370,5 +458,20 @@ class _FakeWeatherService implements WeatherService {
       source: source,
       label: place.displayName,
     );
+  }
+}
+
+class _FakePreferencesStore implements CalculatorPreferencesStore {
+  _FakePreferencesStore(this.initial);
+
+  final CalculatorPreferences? initial;
+  CalculatorPreferences? saved;
+
+  @override
+  Future<CalculatorPreferences?> load() async => initial;
+
+  @override
+  Future<void> save(CalculatorPreferences preferences) async {
+    saved = preferences;
   }
 }

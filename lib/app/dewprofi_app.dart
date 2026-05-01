@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../core/storage/calculator_preferences_store.dart';
 import '../features/humidity_calculator/humidity_calculator_page.dart';
 import '../features/weather/weather_service.dart';
 
 class DewprofiApp extends StatelessWidget {
-  const DewprofiApp({super.key, this.weatherService});
+  const DewprofiApp({super.key, this.weatherService, this.preferencesStore});
 
   final WeatherService? weatherService;
+  final CalculatorPreferencesStore? preferencesStore;
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +36,10 @@ class DewprofiApp extends StatelessWidget {
           fillColor: Color(0xFFFFFBF5),
         ),
       ),
-      home: HumidityCalculatorPage(weatherService: weatherService),
+      home: HumidityCalculatorPage(
+        weatherService: weatherService,
+        preferencesStore: preferencesStore,
+      ),
     );
   }
 }
