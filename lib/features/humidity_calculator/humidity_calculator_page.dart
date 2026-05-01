@@ -557,32 +557,35 @@ class _InputPanel extends StatelessWidget {
             const SizedBox(height: 16),
             Text('Datenquelle', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 12),
-            SegmentedButton<_InputMode>(
-              segments: const [
-                ButtonSegment(
-                  value: _InputMode.manual,
-                  label: Text('Manuell'),
-                  icon: Icon(Icons.tune),
-                ),
-                ButtonSegment(
-                  value: _InputMode.location,
-                  label: Text('Standort'),
-                  icon: Icon(Icons.my_location),
-                ),
-                ButtonSegment(
-                  value: _InputMode.place,
-                  label: Text('Ort'),
-                  icon: Icon(Icons.search),
-                ),
-                ButtonSegment(
-                  value: _InputMode.examples,
-                  label: Text('Beispiele'),
-                  icon: Icon(Icons.location_city),
-                ),
-              ],
-              selected: {inputMode},
-              onSelectionChanged: (selection) =>
-                  onModeChanged(selection.single),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SegmentedButton<_InputMode>(
+                segments: const [
+                  ButtonSegment(
+                    value: _InputMode.manual,
+                    label: Text('Manuell'),
+                    icon: Icon(Icons.tune),
+                  ),
+                  ButtonSegment(
+                    value: _InputMode.location,
+                    label: Text('Standort'),
+                    icon: Icon(Icons.my_location),
+                  ),
+                  ButtonSegment(
+                    value: _InputMode.place,
+                    label: Text('Ort'),
+                    icon: Icon(Icons.search),
+                  ),
+                  ButtonSegment(
+                    value: _InputMode.examples,
+                    label: Text('Beispiele'),
+                    icon: Icon(Icons.location_city),
+                  ),
+                ],
+                selected: {inputMode},
+                onSelectionChanged: (selection) =>
+                    onModeChanged(selection.single),
+              ),
             ),
             const SizedBox(height: 16),
             if (inputMode == _InputMode.location) ...[

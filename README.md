@@ -30,7 +30,7 @@ flutter analyze
 
 Der Open-Meteo-Pfad nutzt Netzwerk nur zur Laufzeit. Tests mocken Standort, Geocoding und Forecast, damit sie offline stabil bleiben.
 
-Der Standortmodus ist auf dem iPhone manuell geprueft: Auswahl von `Standort`, explizites `Standort verwenden`, iOS-Berechtigungsdialog, GPS-basierter Wetterabruf und Fallback-Verhalten bleiben normale App-Pfade. Android ist lokal noch nicht lauffaehig, weil die Android cmdline-tools fehlen.
+Der Standortmodus ist auf dem iPhone manuell geprueft: Auswahl von `Standort`, explizites `Standort verwenden`, iOS-Berechtigungsdialog, GPS-basierter Wetterabruf und Fallback-Verhalten bleiben normale App-Pfade. Android ist fuer diesen iOS-first MVP bewusst nachgelagert, weil lokal die Android cmdline-tools fehlen. Die finale MVP-Checkliste mit automatisierten Nachweisen und Device-Szenarien liegt in `docs/MVP_TEST_CHECKLIST.md`.
 
 Auf dem angeschlossenen iPhone starten:
 
@@ -47,7 +47,7 @@ macOS-Fallback lokal:
 flutter run -d macos
 ```
 
-Android ist im Projekt konfiguriert, lokal aber noch nicht startbar, weil kein Android SDK gefunden wurde. Nach Installation von Android Studio/SDK sollte `flutter doctor` den verbleibenden Android-Setup-Status zeigen.
+Android ist im Projekt konfiguriert, fuer den iOS-first MVP aber noch nicht validiert. Nach Installation von Android Studio/SDK sollte `flutter doctor` den verbleibenden Android-Setup-Status zeigen.
 
 ## Laravel API und separates Frontend
 

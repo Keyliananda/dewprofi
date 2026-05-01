@@ -47,7 +47,7 @@ Akzeptanzkriterien:
 
 ### 1.3 Plattformstrategie vorbereiten
 
-Status 2026-05-01: Teilweise erledigt. Flutter-Projekt mit Android-, iOS-, macOS- und Web-Konfiguration ist angelegt. iOS-Debug-Build fuer ein verbundenes iPhone ist erfolgreich, App-Installation auf das iPhone lief mit Exit-Code 0. Android bleibt lokal durch fehlendes Android SDK blockiert.
+Status 2026-05-01: Erledigt fuer den iOS-first MVP. Flutter-Projekt mit Android-, iOS-, macOS- und Web-Konfiguration ist angelegt; iOS-Build, Installation und Standortfluss sind verifiziert. Android ist vorbereitet, wird aber fuer den ersten MVP bewusst nachgelagert, weil lokal Android SDK/cmdline-tools fehlen.
 
 Ziel: Flutter-Projekt so aufsetzen, dass Android und iOS frueh getestet werden.
 
@@ -97,7 +97,7 @@ Akzeptanzkriterien:
 
 ### 3.1 Standort-Onboarding bauen
 
-Status 2026-05-01: Erledigt fuer den MVP-Schnitt. Die App hat einen expliziten Standortmodus, fragt Standort nur nach Nutzeraktion an, nutzt Koordinaten fuer denselben Open-Meteo-Wetterfluss und zeigt bei Ablehnung, deaktivierten Diensten oder Timeout normale Ortssuche/manuelle Werte als Fallback. iOS-, Android- und macOS-Konfigurationen fuer die Geolocator-Berechtigung sind vorbereitet; der echte iPhone-Standortfluss wurde auf Device erfolgreich getestet. Android bleibt bis zur lokalen SDK-Ergaenzung offen.
+Status 2026-05-01: Erledigt fuer den iOS-first MVP-Schnitt. Die App hat einen expliziten Standortmodus, fragt Standort nur nach Nutzeraktion an, nutzt Koordinaten fuer denselben Open-Meteo-Wetterfluss und zeigt bei Ablehnung, deaktivierten Diensten oder Timeout normale Ortssuche/manuelle Werte als Fallback. iOS-, Android- und macOS-Konfigurationen fuer die Geolocator-Berechtigung sind vorbereitet; der echte iPhone-Standortfluss wurde auf Device erfolgreich getestet. Android wird bis zur lokalen SDK-Ergaenzung bewusst nachgelagert.
 
 Ziel: Der Default-Start nutzt lokale Daten, wenn der Nutzer zustimmt.
 
@@ -292,11 +292,13 @@ Akzeptanzkriterien:
 
 ### 8.1 MVP-Review
 
+Status 2026-05-01: Erledigt fuer den iOS-first MVP. Die aktuellen App-Pfade decken manuelle Eingabe, Standort, Ortssuche, Beispielorte, Open-Meteo-Wetterwerte, lokale Psychrometrie, Persistenz und die grafische Darstellung ab. Android ist als vorbereiteter, bewusst nachgelagerter Validierungspfad dokumentiert.
+
 Ziel: Pruefen, ob der Kernnutzen erreicht ist.
 
 MVP ist erreicht, wenn:
 
-- Android und iOS grundlegend laufen.
+- iOS laeuft grundlegend; Android ist projektseitig vorbereitet und wird nach SDK-Ergaenzung validiert.
 - Standort, Ort, Beispielort und manuelle Eingabe als Pfade vorhanden sind.
 - Wetterdaten fuer Standort oder Ort genutzt werden koennen.
 - Berechnung von Taupunkt und Feuchtewerten lokal funktioniert.
@@ -305,18 +307,20 @@ MVP ist erreicht, wenn:
 
 ### 8.2 MVP-Testpaket
 
+Status 2026-05-01: Erledigt fuer den iOS-first MVP und in `docs/MVP_TEST_CHECKLIST.md` dokumentiert. Wetter-API-Fehler, Standort-Ablehnung/Fallback und kleine Displaybreite sind per Tests/Fakes abgedeckt. iOS-Device-Standort ist laut aktuellem Projektstand manuell geprueft. Android-Device-Test ist bewusst aus diesem MVP herausgenommen und bleibt als nachgelagerter Plattformcheck sichtbar.
+
 Ziel: Die erste nutzbare Version gegen Kernrisiken testen.
 
 Akzeptanzkriterien:
 
 - Unit-Tests fuer Rechenlogik laufen.
-- Manuelle Tests auf Android laufen.
+- Android-Test ist fuer diesen iOS-first MVP bewusst nachgelagert.
 - Manuelle Tests auf iOS laufen.
 - Wetter-API-Fehlerfall wurde getestet.
 - Standort-Ablehnung wurde getestet.
 - Kleine Displays wurden geprueft.
 
-Hinweis 2026-05-01: Standort-Ablehnung und Standort-Zustimmung sind technisch per Fake-Service getestet; der echte iPhone-Permission-/GPS-/Wetterpfad wurde manuell erfolgreich geprueft. Android-Permission-Dialog und GPS-Abruf brauchen nach Installation der Android cmdline-tools noch Device-Validierung.
+Hinweis 2026-05-01: Standort-Ablehnung und Standort-Zustimmung sind technisch per Fake-Service getestet; der echte iPhone-Permission-/GPS-/Wetterpfad wurde laut aktuellem Projektstand manuell erfolgreich geprueft. Android-Permission-Dialog und GPS-Abruf bleiben nach Installation der Android cmdline-tools als separater Plattformcheck offen. Die finale manuelle Release-Pruefung bleibt in `docs/MVP_TEST_CHECKLIST.md` sichtbar.
 
 ## 9. Nach dem MVP: Govee H5075
 

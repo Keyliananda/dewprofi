@@ -218,7 +218,7 @@ void main() {
 
   testWidgets('weather errors fall back to manual input', (tester) async {
     final weatherService = _FakeWeatherService(
-      error: const WeatherServiceException('Ort nicht gefunden.'),
+      searchError: const WeatherServiceException('Ort nicht gefunden.'),
     );
     await _pumpCalculator(tester, weatherService: weatherService);
     await _expandInput(tester);
@@ -230,6 +230,30 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Ort nicht gefunden.'), findsOneWidget);
+    expect(find.text('Manuelle Eingabe'), findsOneWidget);
+    expect(find.text('21,0 °C'), findsOneWidget);
+  });
+
+  testWidgets('weather fetch errors fall back after successful place search', (
+    tester,
+  ) async {
+    final weatherService = _FakeWeatherService(
+      fetchError: const WeatherServiceException(
+        'Wetterdienst antwortet mit Status 500.',
+      ),
+    );
+    await _pumpCalculator(tester, weatherService: weatherService);
+    await _expandInput(tester);
+
+    await tester.tap(find.text('Ort'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Ort suchen'), 'HH');
+    await tester.tap(find.text('Wetter laden'));
+    await tester.pumpAndSettle();
+
+    expect(weatherService.searchCount, 1);
+    expect(weatherService.fetchCount, 1);
+    expect(find.text('Wetterdienst antwortet mit Status 500.'), findsOneWidget);
     expect(find.text('Manuelle Eingabe'), findsOneWidget);
     expect(find.text('21,0 °C'), findsOneWidget);
   });
@@ -409,6 +433,32 @@ void main() {
 
     expect(tester.widget<IconButton>(resetButton).onPressed, isNull);
   });
+
+  testWidgets('expanded calculator controls fit on small displays', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 568);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await _pumpCalculator(tester);
+    expect(tester.takeException(), isNull);
+
+    await _expandInput(tester);
+    expect(tester.takeException(), isNull);
+    expect(find.text('Manuelle Werte'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Standort'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Standort'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Standort verwenden'), findsOneWidget);
+  });
 }
 
 Future<void> _expandInput(WidgetTester tester) async {
@@ -527,11 +577,18 @@ WeatherMeasurement _measurement({
 }
 
 class _FakeWeatherService implements WeatherService {
-  _FakeWeatherService({WeatherMeasurement? measurement, this.error})
-    : measurement = measurement ?? _measurement();
+  _FakeWeatherService({
+    WeatherMeasurement? measurement,
+    Object? error,
+    Object? searchError,
+    Object? fetchError,
+  }) : measurement = measurement ?? _measurement(),
+       searchError = searchError ?? error,
+       fetchError = fetchError ?? error;
 
   final WeatherMeasurement measurement;
-  final Object? error;
+  final Object? searchError;
+  final Object? fetchError;
   String? lastSearchQuery;
   WeatherCoordinates? lastCoordinates;
   int searchCount = 0;
@@ -541,7 +598,7 @@ class _FakeWeatherService implements WeatherService {
   Future<List<WeatherPlace>> searchPlaces(String query) async {
     searchCount += 1;
     lastSearchQuery = query;
-    final error = this.error;
+    final error = searchError;
     if (error != null) {
       throw error;
     }
@@ -563,7 +620,7 @@ class _FakeWeatherService implements WeatherService {
   }) async {
     fetchCount += 1;
     lastCoordinates = coordinates;
-    final error = this.error;
+    final error = fetchError;
     if (error != null) {
       throw error;
     }

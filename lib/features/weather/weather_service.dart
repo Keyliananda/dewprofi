@@ -134,7 +134,14 @@ class OpenMeteoWeatherService implements WeatherService {
   }
 
   Map<String, Object?> _decodeObject(String body) {
-    final decoded = jsonDecode(body);
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(body);
+    } on FormatException {
+      throw const WeatherServiceException(
+        'Unerwartete Antwort vom Wetterdienst.',
+      );
+    }
     if (decoded is! Map<String, Object?>) {
       throw const WeatherServiceException(
         'Unerwartete Antwort vom Wetterdienst.',

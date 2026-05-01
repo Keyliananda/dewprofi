@@ -89,6 +89,49 @@ void main() {
       );
     });
 
+    test('fetchWeather reports http failures', () async {
+      final service = OpenMeteoWeatherService(
+        client: MockClient(
+          (_) async => http.Response('Internal Server Error', 500),
+        ),
+      );
+
+      await expectLater(
+        service.fetchWeather(
+          coordinates: const WeatherCoordinates(
+            latitude: 52.52,
+            longitude: 13.4,
+          ),
+          source: MeasurementSource.place,
+          label: 'Berlin',
+        ),
+        throwsA(
+          isA<WeatherServiceException>().having(
+            (error) => error.message,
+            'message',
+            'Wetterdienst antwortet mit Status 500.',
+          ),
+        ),
+      );
+    });
+
+    test('searchPlaces reports malformed responses', () async {
+      final service = OpenMeteoWeatherService(
+        client: MockClient((_) async => http.Response('not json', 200)),
+      );
+
+      await expectLater(
+        service.searchPlaces('Berlin'),
+        throwsA(
+          isA<WeatherServiceException>().having(
+            (error) => error.message,
+            'message',
+            'Unerwartete Antwort vom Wetterdienst.',
+          ),
+        ),
+      );
+    });
+
     test('searchPlaces reports unknown places', () async {
       final service = OpenMeteoWeatherService(
         client: MockClient((_) async => http.Response('{"results": []}', 200)),
