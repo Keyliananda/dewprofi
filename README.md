@@ -1,6 +1,6 @@
 # dewprofi
 
-Flutter-App fuer den visuellen Feuchte-Rechner-MVP.
+Flutter-App fuer den visuellen Feuchte-Rechner-MVP. Zusaetzlich liegen ein Laravel-API-Backend und ein separates React/Vite-Frontend als Web-Stack in `backend/` und `frontend/`.
 
 ## Was aktuell funktioniert
 
@@ -44,3 +44,43 @@ flutter run -d macos
 ```
 
 Android ist im Projekt konfiguriert, lokal aber noch nicht startbar, weil kein Android SDK gefunden wurde. Nach Installation von Android Studio/SDK sollte `flutter doctor` den verbleibenden Android-Setup-Status zeigen.
+
+## Laravel API und separates Frontend
+
+Backend vorbereiten:
+
+```sh
+cd backend
+composer install
+php artisan migrate
+herd link api.dewprofi
+```
+
+Frontend fuer Herd bauen und verlinken:
+
+```sh
+cd frontend
+npm install
+npm run build
+cd dist
+herd link app.dewprofi
+```
+
+Optionaler Vite-Dev-Server fuer Live-Entwicklung:
+
+```sh
+cd frontend
+npm run dev
+```
+
+Empfohlene lokale URLs:
+
+- Frontend: `http://app.dewprofi.test`
+- API: `http://api.dewprofi.test`
+
+Das Frontend erwartet die API unter `http://api.dewprofi.test`. Bei anderer Backend-URL `frontend/.env` nach `frontend/.env.example` anlegen und `VITE_API_BASE_URL` setzen. Die API bietet `POST /api/register`, `POST /api/login`, `GET /api/me`, `POST /api/logout` und `GET /api/health`.
+
+Der Web-Stack bildet die Flutter-Kernfunktionen ab: manuelle Werte, Ortssuche,
+Beispielorte, Open-Meteo-Wetterwerte, Taupunkt/absolute Feuchte/Zonen,
+Einfach-/Profi-Details und eine interaktive Temperatur-Feuchte-Grafik mit
+Ziehen, Kurvensperre, Pan, Zoom und Reset.

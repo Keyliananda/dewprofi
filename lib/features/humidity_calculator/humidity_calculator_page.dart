@@ -10,6 +10,8 @@ import '../weather/weather_service.dart';
 
 enum _InputMode { manual, place, examples }
 
+enum _DetailMode { simple, pro }
+
 class HumidityCalculatorPage extends StatefulWidget {
   HumidityCalculatorPage({super.key, WeatherService? weatherService})
     : weatherService = weatherService ?? OpenMeteoWeatherService();
@@ -33,6 +35,7 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
   String? _weatherMessage;
   bool _isLoadingWeather = false;
   bool _isInputExpanded = false;
+  _DetailMode _detailMode = _DetailMode.simple;
 
   @override
   void initState() {
@@ -275,6 +278,9 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                                 result: result,
                                 measurement: _measurement,
                                 error: _error,
+                                detailMode: _detailMode,
+                                onDetailModeChanged: (mode) =>
+                                    setState(() => _detailMode = mode),
                                 onChartMeasurementChanged:
                                     _applyChartMeasurement,
                               ),
@@ -308,6 +314,9 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                               result: result,
                               measurement: _measurement,
                               error: _error,
+                              detailMode: _detailMode,
+                              onDetailModeChanged: (mode) =>
+                                  setState(() => _detailMode = mode),
                               onChartMeasurementChanged: _applyChartMeasurement,
                             ),
                           ],
@@ -606,12 +615,16 @@ class _ResultColumn extends StatelessWidget {
     required this.result,
     required this.measurement,
     required this.error,
+    required this.detailMode,
+    required this.onDetailModeChanged,
     required this.onChartMeasurementChanged,
   });
 
   final PsychrometricResult? result;
   final WeatherMeasurement? measurement;
   final String? error;
+  final _DetailMode detailMode;
+  final ValueChanged<_DetailMode> onDetailModeChanged;
   final void Function({
     required double temperatureCelsius,
     required double relativeHumidityPercent,
@@ -643,33 +656,71 @@ class _ResultColumn extends StatelessWidget {
           onMeasurementChanged: onChartMeasurementChanged,
         ),
         const SizedBox(height: 16),
-        _ResultPanel(result: result, measurement: measurement),
+        _ResultPanel(
+          result: result,
+          measurement: measurement,
+          detailMode: detailMode,
+          onDetailModeChanged: onDetailModeChanged,
+        ),
       ],
     );
   }
 }
 
 class _ResultPanel extends StatelessWidget {
-  const _ResultPanel({required this.result, required this.measurement});
+  const _ResultPanel({
+    required this.result,
+    required this.measurement,
+    required this.detailMode,
+    required this.onDetailModeChanged,
+  });
 
   final PsychrometricResult result;
   final WeatherMeasurement? measurement;
+  final _DetailMode detailMode;
+  final ValueChanged<_DetailMode> onDetailModeChanged;
 
   @override
   Widget build(BuildContext context) {
+    final isPro = detailMode == _DetailMode.pro;
+
     return _Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(
+              SizedBox(
+                width: 210,
                 child: Text(
                   measurement?.label ?? 'Ergebnis',
+                  overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
               _ZonePill(zone: result.zone),
+              SegmentedButton<_DetailMode>(
+                key: const ValueKey('detail-mode-segmented-button'),
+                segments: const [
+                  ButtonSegment(
+                    value: _DetailMode.simple,
+                    label: Text('Einfach'),
+                    icon: Icon(Icons.visibility),
+                  ),
+                  ButtonSegment(
+                    value: _DetailMode.pro,
+                    label: Text('Profi'),
+                    icon: Icon(Icons.analytics),
+                  ),
+                ],
+                selected: {detailMode},
+                showSelectedIcon: false,
+                onSelectionChanged: (selection) =>
+                    onDetailModeChanged(selection.single),
+              ),
             ],
           ),
           if (measurement != null) ...[
@@ -700,21 +751,56 @@ class _ResultPanel extends StatelessWidget {
                     ? 'unter Messbereich'
                     : '${_formatNumber(result.dewPointCelsius!)} °C',
               ),
-              _MetricTile(
-                label: 'Absolute Feuchte',
-                value: '${_formatNumber(result.absoluteHumidityGM3)} g/m³',
-              ),
-              _MetricTile(
-                label: 'Druck',
-                value: '${_formatNumber(result.pressureHPa, decimals: 2)} hPa',
-              ),
-              if (measurement != null)
-                _MetricTile(
-                  label: 'Datenalter',
-                  value: _formatAge(measurement!.ageAt(DateTime.now())),
-                ),
             ],
           ),
+          if (isPro) ...[
+            const SizedBox(height: 18),
+            Divider(color: Theme.of(context).colorScheme.outlineVariant),
+            const SizedBox(height: 12),
+            Text('Details', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 14,
+              runSpacing: 14,
+              children: [
+                _MetricTile(
+                  label: 'Absolute Feuchte',
+                  value: '${_formatNumber(result.absoluteHumidityGM3)} g/m³',
+                ),
+                _MetricTile(
+                  label: 'Druck',
+                  value:
+                      '${_formatNumber(result.pressureHPa, decimals: 2)} hPa',
+                ),
+                _MetricTile(
+                  label: 'Saettigungsdampfdruck',
+                  value:
+                      '${_formatNumber(result.saturationVaporPressureHPa, decimals: 2)} hPa',
+                ),
+                _MetricTile(
+                  label: 'Dampfdruck',
+                  value:
+                      '${_formatNumber(result.vaporPressureHPa, decimals: 2)} hPa',
+                ),
+                _MetricTile(
+                  label: 'Taupunktabstand',
+                  value: result.dewPointSpreadCelsius.isFinite
+                      ? '${_formatNumber(result.dewPointSpreadCelsius)} °C'
+                      : 'nicht bestimmbar',
+                ),
+                if (measurement != null) ...[
+                  _MetricTile(
+                    label: 'Quelle',
+                    value: _sourceLabel(measurement!),
+                  ),
+                  _MetricTile(
+                    label: 'Datenalter',
+                    value: _formatAge(measurement!.ageAt(DateTime.now())),
+                  ),
+                ],
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -1601,6 +1687,10 @@ String _formatNumber(double value, {int decimals = 1}) {
 
 String _measurementSubtitle(WeatherMeasurement measurement) {
   return '${measurement.source.label} · aktualisiert ${_formatClock(measurement.fetchedAt)}';
+}
+
+String _sourceLabel(WeatherMeasurement measurement) {
+  return '${measurement.source.label} · ${measurement.label}';
 }
 
 String _formatClock(DateTime value) {

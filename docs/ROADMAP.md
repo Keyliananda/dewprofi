@@ -249,6 +249,8 @@ Akzeptanzkriterien:
 
 ### 6.3 Einfach-/Profi-Modus vorbereiten
 
+Status 2026-05-01: Erledigt fuer den Rechnerbereich. Die Ergebnisansicht startet im Einfach-Modus mit zentralen Werten und Chart; der Profi-Modus blendet absolute Feuchte, Druck, Quelle, Datenalter, Dampfdruck, Saettigungsdampfdruck und Taupunktabstand ein.
+
 Ziel: Einsteiger werden nicht ueberfordert, fortgeschrittene Nutzer bekommen mehr Tiefe.
 
 Akzeptanzkriterien:

@@ -14,8 +14,25 @@ void main() {
 
     expect(find.text('Manuelle Eingabe'), findsOneWidget);
     expect(find.text('Taupunkt'), findsOneWidget);
-    expect(find.text('Absolute Feuchte'), findsOneWidget);
+    expect(find.text('Absolute Feuchte'), findsNothing);
     expect(find.text('angenehm'), findsOneWidget);
+    expect(find.byKey(const ValueKey('humidity-curve-chart')), findsOneWidget);
+  });
+
+  testWidgets('pro mode reveals extended psychrometric details', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const DewprofiApp());
+
+    await _switchToProMode(tester);
+
+    expect(find.text('Absolute Feuchte'), findsOneWidget);
+    expect(find.text('Druck'), findsOneWidget);
+    expect(find.text('Saettigungsdampfdruck'), findsOneWidget);
+    expect(find.text('Dampfdruck'), findsOneWidget);
+    expect(find.text('Taupunktabstand'), findsOneWidget);
+    expect(find.text('Quelle'), findsOneWidget);
+    expect(find.text('Datenalter'), findsOneWidget);
     expect(find.byKey(const ValueKey('humidity-curve-chart')), findsOneWidget);
   });
 
@@ -47,6 +64,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('19,5 °C'), findsOneWidget);
+    await _switchToProMode(tester);
+
     expect(find.text('990,50 hPa'), findsOneWidget);
   });
 
@@ -76,9 +95,12 @@ void main() {
 
     expect(find.text('Berlin, Berlin'), findsOneWidget);
     expect(find.textContaining('beispielort'), findsWidgets);
+    await _switchToProMode(tester);
+
     expect(find.text('Datenalter'), findsOneWidget);
     expect(find.text('18,0 °C'), findsOneWidget);
 
+    await _scrollToTop(tester);
     await tester.tap(find.text('Manuell'));
     await tester.pumpAndSettle();
 
@@ -194,6 +216,25 @@ void main() {
 
 Future<void> _expandInput(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('compact-input-row')));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _switchToProMode(WidgetTester tester) async {
+  final proMode = find.text('Profi');
+  for (var attempt = 0; attempt < 10; attempt += 1) {
+    final center = tester.getCenter(proMode);
+    if (center.dy > 0 && center.dy < 580) {
+      break;
+    }
+    await tester.drag(find.byType(ListView), const Offset(0, -140));
+    await tester.pump();
+  }
+  await tester.tap(proMode);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _scrollToTop(WidgetTester tester) async {
+  await tester.drag(find.byType(ListView), const Offset(0, 600));
   await tester.pumpAndSettle();
 }
 
