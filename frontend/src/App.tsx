@@ -72,6 +72,7 @@ function App() {
   const now = useMemo(() => new Date().toISOString(), [])
   const [health, setHealth] = useState<HealthState>('checking')
   const [user, setUser] = useState<User | null>(null)
+  const workspaceUnlocked = RELEASE_WORKSPACE || user?.is_super_admin === true
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
   const [inputMode, setInputMode] = useState<InputMode>('manual')
   const [detailMode, setDetailMode] = useState<DetailMode>('simple')
@@ -103,15 +104,17 @@ function App() {
     apiGet<AuthResponse>('/api/me')
       .then((response) => setUser(response.user))
       .catch(() => setUser(null))
+  }, [])
 
-    if (!RELEASE_WORKSPACE) {
+  useEffect(() => {
+    if (!workspaceUnlocked) {
       return
     }
 
     apiGet<{ places: WeatherPlace[] }>('/api/example-places')
       .then((response) => setExamplePlaces(response.places))
       .catch(() => setWeatherMessage('Beispielorte konnten nicht geladen werden.'))
-  }, [])
+  }, [workspaceUnlocked])
 
   function recalculateManual(next?: {
     temperatureText?: string
@@ -302,7 +305,7 @@ function App() {
     }
   }
 
-  if (!RELEASE_WORKSPACE) {
+  if (!workspaceUnlocked) {
     return (
       <LaunchGate
         health={health}

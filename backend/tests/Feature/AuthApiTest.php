@@ -56,6 +56,26 @@ class AuthApiTest extends TestCase
         $this->frontend()->getJson('/api/me')->assertUnauthorized();
     }
 
+    public function test_superuser_auth_response_exposes_superuser_flag(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'admin@dewprofi.test',
+            'password' => Hash::make('password123'),
+            'is_super_admin' => true,
+        ]);
+
+        $this->frontend()->postJson('/api/login', [
+            'email' => $user->email,
+            'password' => 'password123',
+        ])
+            ->assertOk()
+            ->assertJsonPath('user.is_super_admin', true);
+
+        $this->frontend()->getJson('/api/me')
+            ->assertOk()
+            ->assertJsonPath('user.is_super_admin', true);
+    }
+
     public function test_me_requires_an_authenticated_session(): void
     {
         $this->frontend()->getJson('/api/me')->assertUnauthorized();
