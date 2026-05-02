@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/storage/calculator_preferences_store.dart';
+import '../features/govee/govee_h5075_gatt_probe.dart';
 import '../features/humidity_calculator/humidity_calculator_page.dart';
 import '../features/location/location_service.dart';
 import '../features/sensors/ble_advertisement_scanner.dart';
@@ -13,12 +14,14 @@ class DewprofiApp extends StatelessWidget {
     this.preferencesStore,
     this.locationService,
     this.goveeScanner,
+    this.goveeGattProbe,
   });
 
   final WeatherService? weatherService;
   final CalculatorPreferencesStore? preferencesStore;
   final LocationService? locationService;
   final BleAdvertisementScanner? goveeScanner;
+  final GoveeH5075GattProbe? goveeGattProbe;
 
   @override
   Widget build(BuildContext context) {
@@ -51,6 +54,7 @@ class DewprofiApp extends StatelessWidget {
         preferencesStore: preferencesStore,
         locationService: locationService,
         goveeScanner: goveeScanner,
+        goveeGattProbe: goveeGattProbe,
       ),
     );
   }

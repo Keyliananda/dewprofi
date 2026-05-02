@@ -8,6 +8,8 @@ import '../../core/storage/calculator_preferences_store.dart';
 import '../../core/psychrometrics/psychrometrics.dart';
 import '../../core/sensors/ble_advertisement.dart';
 import '../../core/sensors/sensor_measurement.dart';
+import '../govee/flutter_blue_plus_govee_h5075_gatt_probe.dart';
+import '../govee/govee_h5075_gatt_probe.dart';
 import '../govee/govee_h5075_parser.dart';
 import '../govee/govee_h5075_spike_panel.dart';
 import '../location/location_service.dart';
@@ -28,17 +30,20 @@ class HumidityCalculatorPage extends StatefulWidget {
     CalculatorPreferencesStore? preferencesStore,
     LocationService? locationService,
     BleAdvertisementScanner? goveeScanner,
+    GoveeH5075GattProbe? goveeGattProbe,
   }) : weatherService = weatherService ?? OpenMeteoWeatherService(),
        preferencesStore =
            preferencesStore ??
            const SharedPreferencesCalculatorPreferencesStore(),
        locationService = locationService ?? GeolocatorLocationService(),
-       goveeScanner = goveeScanner ?? FlutterBluePlusBleAdvertisementScanner();
+       goveeScanner = goveeScanner ?? FlutterBluePlusBleAdvertisementScanner(),
+       goveeGattProbe = goveeGattProbe ?? FlutterBluePlusGoveeH5075GattProbe();
 
   final WeatherService weatherService;
   final CalculatorPreferencesStore preferencesStore;
   final LocationService locationService;
   final BleAdvertisementScanner goveeScanner;
+  final GoveeH5075GattProbe goveeGattProbe;
 
   @override
   State<HumidityCalculatorPage> createState() => _HumidityCalculatorPageState();
@@ -63,9 +68,14 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
   _DetailMode _detailMode = _DetailMode.simple;
   WeatherPlace? _selectedPlace;
   BleScanSnapshot _bleScanSnapshot = const BleScanSnapshot.idle();
+  GoveeH5075GattProbeSnapshot _goveeGattProbeSnapshot =
+      const GoveeH5075GattProbeSnapshot.idle();
   int _minimumSensorRssi = _defaultMinimumSensorRssi;
+  GoveeH5075HistoryProbeWindow _historyProbeWindow =
+      GoveeH5075HistoryProbeWindow.tenMinutes;
   final _goveeParser = const GoveeH5075AdvertisementParser();
   StreamSubscription<BleScanSnapshot>? _bleScanSubscription;
+  StreamSubscription<GoveeH5075GattProbeSnapshot>? _goveeGattProbeSubscription;
 
   @override
   void initState() {
@@ -90,6 +100,25 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
         });
       },
     );
+    _goveeGattProbeSubscription = widget.goveeGattProbe.snapshots.listen(
+      (snapshot) {
+        if (!mounted) {
+          return;
+        }
+        setState(() => _goveeGattProbeSnapshot = snapshot);
+      },
+      onError: (Object error) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _goveeGattProbeSnapshot = GoveeH5075GattProbeSnapshot(
+            status: GoveeH5075GattProbeStatus.error,
+            message: 'GATT-Probe Fehler: $error',
+          );
+        });
+      },
+    );
     _recalculate(persist: false);
     _restorePreferences();
   }
@@ -97,7 +126,9 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
   @override
   void dispose() {
     _bleScanSubscription?.cancel();
+    _goveeGattProbeSubscription?.cancel();
     widget.goveeScanner.dispose();
+    widget.goveeGattProbe.dispose();
     _temperatureController.dispose();
     _humidityController.dispose();
     _pressureController.dispose();
@@ -327,6 +358,54 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
     }
   }
 
+  Future<void> _startGoveeGattProbe(
+    BleAdvertisement advertisement, {
+    GoveeH5075HistoryChunk? historyChunk,
+  }) async {
+    await _stopGoveeScan();
+    final effectiveHistoryChunk = historyChunk ?? _historyProbeWindow.toChunk();
+    try {
+      await widget.goveeGattProbe.run(
+        GoveeH5075GattProbeRequest(
+          advertisement: advertisement,
+          historyWindow: _historyProbeWindow,
+          customHistoryChunk: historyChunk,
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _goveeGattProbeSnapshot = GoveeH5075GattProbeSnapshot(
+          status: GoveeH5075GattProbeStatus.error,
+          device: advertisement,
+          historyWindow: _historyProbeWindow,
+          historyChunk: effectiveHistoryChunk,
+          message: 'GATT-Probe konnte nicht gestartet werden: $error',
+        );
+      });
+    }
+  }
+
+  Future<void> _startGoveeHistoryChunk(
+    GoveeH5075HistoryChunk historyChunk,
+  ) async {
+    final advertisement = _goveeGattProbeSnapshot.device;
+    if (advertisement == null) {
+      return;
+    }
+    await _startGoveeGattProbe(advertisement, historyChunk: historyChunk);
+  }
+
+  Future<void> _abortGoveeGattProbe() async {
+    await widget.goveeGattProbe.abort();
+  }
+
+  void _changeHistoryProbeWindow(GoveeH5075HistoryProbeWindow window) {
+    setState(() => _historyProbeWindow = window);
+  }
+
   void _changeMinimumSensorRssi(int value) {
     setState(() => _minimumSensorRssi = value);
   }
@@ -554,6 +633,8 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                                     visibleBleAdvertisements,
                                 minimumSensorRssi: _minimumSensorRssi,
                                 goveeDiscoveries: goveeDiscoveries,
+                                goveeGattProbeSnapshot: _goveeGattProbeSnapshot,
+                                historyProbeWindow: _historyProbeWindow,
                                 onRefreshWeather: _refreshStoredWeather,
                                 onToggleExpanded: _toggleInputExpanded,
                                 onChanged: _recalculate,
@@ -567,6 +648,12 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                                     _changeMinimumSensorRssi,
                                 onApplySensorMeasurement:
                                     _applySensorMeasurement,
+                                onStartGoveeGattProbe: _startGoveeGattProbe,
+                                onStartGoveeHistoryChunk:
+                                    _startGoveeHistoryChunk,
+                                onAbortGoveeGattProbe: _abortGoveeGattProbe,
+                                onHistoryProbeWindowChanged:
+                                    _changeHistoryProbeWindow,
                               ),
                             ),
                             const SizedBox(width: 20),
@@ -603,6 +690,8 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                                   visibleBleAdvertisements,
                               minimumSensorRssi: _minimumSensorRssi,
                               goveeDiscoveries: goveeDiscoveries,
+                              goveeGattProbeSnapshot: _goveeGattProbeSnapshot,
+                              historyProbeWindow: _historyProbeWindow,
                               onRefreshWeather: _refreshStoredWeather,
                               onToggleExpanded: _toggleInputExpanded,
                               onChanged: _recalculate,
@@ -615,6 +704,11 @@ class _HumidityCalculatorPageState extends State<HumidityCalculatorPage> {
                               onMinimumSensorRssiChanged:
                                   _changeMinimumSensorRssi,
                               onApplySensorMeasurement: _applySensorMeasurement,
+                              onStartGoveeGattProbe: _startGoveeGattProbe,
+                              onStartGoveeHistoryChunk: _startGoveeHistoryChunk,
+                              onAbortGoveeGattProbe: _abortGoveeGattProbe,
+                              onHistoryProbeWindowChanged:
+                                  _changeHistoryProbeWindow,
                             ),
                             const SizedBox(height: 16),
                             _ResultColumn(
@@ -653,6 +747,8 @@ class _InputPanel extends StatelessWidget {
     required this.visibleBleAdvertisements,
     required this.minimumSensorRssi,
     required this.goveeDiscoveries,
+    required this.goveeGattProbeSnapshot,
+    required this.historyProbeWindow,
     required this.onToggleExpanded,
     required this.onModeChanged,
     required this.onUseLocation,
@@ -664,6 +760,10 @@ class _InputPanel extends StatelessWidget {
     required this.onStopGoveeScan,
     required this.onMinimumSensorRssiChanged,
     required this.onApplySensorMeasurement,
+    required this.onStartGoveeGattProbe,
+    required this.onStartGoveeHistoryChunk,
+    required this.onAbortGoveeGattProbe,
+    required this.onHistoryProbeWindowChanged,
     this.weatherMessage,
   });
 
@@ -681,6 +781,8 @@ class _InputPanel extends StatelessWidget {
   final List<BleAdvertisement> visibleBleAdvertisements;
   final int minimumSensorRssi;
   final List<GoveeH5075Discovery> goveeDiscoveries;
+  final GoveeH5075GattProbeSnapshot goveeGattProbeSnapshot;
+  final GoveeH5075HistoryProbeWindow historyProbeWindow;
   final VoidCallback onToggleExpanded;
   final ValueChanged<_InputMode> onModeChanged;
   final VoidCallback onUseLocation;
@@ -692,6 +794,10 @@ class _InputPanel extends StatelessWidget {
   final VoidCallback onStopGoveeScan;
   final ValueChanged<int> onMinimumSensorRssiChanged;
   final ValueChanged<LiveSensorMeasurement> onApplySensorMeasurement;
+  final ValueChanged<BleAdvertisement> onStartGoveeGattProbe;
+  final ValueChanged<GoveeH5075HistoryChunk> onStartGoveeHistoryChunk;
+  final VoidCallback onAbortGoveeGattProbe;
+  final ValueChanged<GoveeH5075HistoryProbeWindow> onHistoryProbeWindowChanged;
   final String? weatherMessage;
 
   @override
@@ -812,10 +918,16 @@ class _InputPanel extends StatelessWidget {
                 visibleAdvertisements: visibleBleAdvertisements,
                 minimumRssi: minimumSensorRssi,
                 discoveries: goveeDiscoveries,
+                gattProbeSnapshot: goveeGattProbeSnapshot,
+                historyProbeWindow: historyProbeWindow,
                 onStartScan: onStartGoveeScan,
                 onStopScan: onStopGoveeScan,
                 onMinimumRssiChanged: onMinimumSensorRssiChanged,
                 onApplyMeasurement: onApplySensorMeasurement,
+                onStartGattProbe: onStartGoveeGattProbe,
+                onStartHistoryChunk: onStartGoveeHistoryChunk,
+                onAbortGattProbe: onAbortGoveeGattProbe,
+                onHistoryProbeWindowChanged: onHistoryProbeWindowChanged,
               ),
               const SizedBox(height: 16),
             ],

@@ -330,13 +330,30 @@ Status 2026-05-01: Paket `9.1-govee-h5075-ble-discovery-spike` implementiert die
 
 Status Paket `9.2-govee-h5075-platform-scan-stabilization`: Das erste echte macOS-Sample `GVH5075_ACC0` ist in Parser- und UI-Tests abgedeckt. Der iPhone-Scanpfad ist mit echter H5075-Hardware validiert: `GVH5075_47EE` wurde bei `-41 dBm` als `22,0 °C`, `29,1 % rF` und `95 %` Batterie dekodiert. Der Batteriebyte-Wert `0x00` aus dem macOS-Capture wird bis zur Gegenpruefung gegen LCD/Govee-App als unbekannt behandelt. Der FlutterBluePlus-macOS-Scan bleibt per Default deaktiviert, weil der native Darwin-Pfad trotz korrekter Bluetooth-Keys in TCC crashte; eine gezielte Probe ist ueber `--dart-define=DEWPROFI_ENABLE_MACOS_FBP_BLE_SCAN=true` moeglich. Details und Testscript stehen in `docs/GOVEE_H5075_DISCOVERY.md`.
 
+Status Paket `9.3-govee-h5075-capability-research-and-probe-plan`: Die Quellenlage fuer passive Advertisements und aktives GATT ist zusammengefuehrt. Gesichert sind passive Livewerte fuer Temperatur, relative Feuchte und meist Batterie; aktiv per GATT sind Device-/Firmware-Informationen, aktuelle Messung/Batterie, Alarme, Offsets und History realistisch, aber noch nicht in dewprofi implementiert. Der Parser nutzt jetzt die durch mehrere Community-Decoder belegte Zehntelgrad-Temperaturformel. Der sichere Probeplan mit Experimentmatrix steht in `docs/GOVEE_H5075_PROBE_PLAN.md`.
+
+Status Paket `9.4-govee-h5075-readonly-gatt-history-probe-spike`: Ein expliziter GATT-History-Probe ist vorbereitet. Die App verbindet nicht automatisch, sondern nur nach Scan und Button `GATT-Probe`; der Port ist fakebar, der FlutterBluePlus-Adapter inventarisiert Services, aktiviert Notifications, sendet nur allowlisted Current-/Battery-/History-Requests und loggt Raw-Responses kopierbar. History-Fenster sind progressiv auf 10 Minuten, 1 Stunde und 24 Stunden begrenzt; der Full-/20-Tage-Abruf bleibt bis nach echter Hardwarevalidierung gesperrt. Ground Truth aus der Govee-App (`Veranda`, `22,0 °C`, `29,5 % rF`, `83 %`, mindestens eine Woche History) und Testscript stehen in `docs/GOVEE_H5075_HISTORY_PROBE.md`.
+
+Status Paket `9.5-govee-h5075-seven-and-twenty-day-history-probe`: Der manuelle GATT-History-Probe kann jetzt nach 10 Minuten, 1 Stunde und 24 Stunden auch 7 Tage anfragen. Ein 20-Tage-/28800-Minuten-Probe ist als experimenteller Langtest vorbereitet, aber nur nach expliziter UI-Bestaetigung und mit sichtbarer Warnung erreichbar. Timeouts sind fuer 7 Tage und 20 Tage laenger, aber begrenzt; Raw-GATT-Log, Record-Count sowie erste/letzte History-Records bleiben kopierbar. Echte iPhone/H5075-Validierung der langen Fenster ist angelaufen und hat reale History-Records geliefert.
+
+Status Paket `9.6-govee-h5075-history-chunking-and-resume`: Der Read-only-GATT-Probe modelliert History-Abrufe jetzt als konkrete Chunks `start -> end`, dedupliziert Records nach `minutesBack` und diagnostiziert Range, aeltesten/neuesten Record sowie den naechsten empfohlenen Chunk. Partial 20-Tage-Runs wie `-28800m..-14997m` schlagen dadurch manuell `14996 -> 1` als Folgechunk vor; die UI zeigt Chunk, Unique Count, Range und einen expliziten `Folgechunk`-Button. Die Allowlist bleibt auf Current/Battery/History-Read-Requests begrenzt, ohne automatische GATT-Verbindung oder Config-Writes. Praktisch positiv getestet sind Folgechunks bis zur neuesten Minute, zuletzt `2306 -> 1` mit `2114` eindeutigen Records und Range `-2306m..-1m` am 2026-05-02.
+
+Status Paket `9.7-govee-h5075-thirty-day-experimental-probe`: Fuer die Hardware-Grenzprobe gibt es nun zusaetzlich ein bestaetigungspflichtiges `30 d`-Fenster (`43200 -> 1`, Request `33 01 a8 c0 00 01 ... 5b`). Das bleibt explizit unbestaetigt und experimentell: Es erweitert nur die manuelle Read-only-Probe, nicht den Produktpfad, und nutzt weiterhin ausschliesslich den allowlisted History-Read.
+
+Status Paket `9.8-govee-h5075-history-visualization`: Geladene H5075-History-Records koennen nun in einer Govee-nahen Historienansicht dargestellt werden. Die Ansicht nutzt einen blauen Sensor-Header mit aktuellen Temperatur-/Feuchtewerten, Anzeigezeitraeume `Stunde`, `Tag`, `Woche`, `Monat`, `Jahr` und zwei Chartkarten fuer Temperatur und relative Luftfeuchtigkeit. Das ViewModel dedupliziert nach beobachteter Minute, berechnet Max/Avg/Min, Coverage und Gap-Marker, und die CustomPainter-Charts brechen Linien bei groesseren Datenluecken. Die Ansicht wurde mit einem echten erfolgreichen H5075-Folgechunk praktisch positiv geprueft.
+
 Geplanter Umfang:
 
 - BLE-Scan fuer H5075: Basis erledigt; iOS-Hardware-Validierung erfolgreich, macOS-Pluginpfad wegen TCC-Crash gegated.
 - Passive Advertisement-Decodierung fuer Live-Werte: bekannte Manufacturer-Payload und erstes echtes Sample testbar, weitere Firmware-Samples offen.
 - Normalisiertes Datenmodell fuer Temperatur, relative Luftfeuchte, Batterie, Zeitstempel und Quelle: Basis erledigt.
 - Rohdaten-Samples fuer Parser-Debugging: Basis erledigt, erstes echtes Sample dokumentiert.
-- GATT/History-Sync als spaetere Erweiterung nach Live-Werten
+- GATT/History-Probe: Read-only-Spike vorbereitet; 7d und bestaetigter 20d-
+  Probe sind probierbar, partial 20d-Downloads koennen per empfohlenem
+  Folgechunk manuell fortgesetzt werden. Ein bestaetigungspflichtiger 30d-
+  Grenztest ist fuer echte Hardwareproben vorbereitet.
+- H5075-History-Darstellung: Erste Govee-nahe iOS-Ansicht mit Zeitraum-Tabs,
+  Temperatur-/Feuchte-Charts, Statistiken und Coverage-Diagnose ist integriert.
 
 Diese Phase gehoert nicht mehr zum ersten MVP.
 

@@ -19,7 +19,7 @@ void main() {
     final discovery = parser.parse(advertisement);
 
     expect(discovery.status, GoveeH5075ParseStatus.decoded);
-    expect(discovery.measurement?.temperatureCelsius, closeTo(16.8566, 0.0001));
+    expect(discovery.measurement?.temperatureCelsius, 16.8);
     expect(discovery.measurement?.relativeHumidityPercent, 56.6);
     expect(discovery.measurement?.batteryPercent, 87);
     expect(discovery.measurement?.rawAdvertisement, same(advertisement));
@@ -39,7 +39,7 @@ void main() {
     );
 
     expect(discovery.status, GoveeH5075ParseStatus.decoded);
-    expect(discovery.measurement?.temperatureCelsius, closeTo(16.8566, 0.0001));
+    expect(discovery.measurement?.temperatureCelsius, 16.8);
     expect(discovery.measurement?.relativeHumidityPercent, 56.6);
     expect(discovery.measurement?.batteryPercent, isNull);
   });

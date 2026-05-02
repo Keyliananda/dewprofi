@@ -11,7 +11,7 @@ Flutter-App fuer den visuellen Feuchte-Rechner-MVP. Zusaetzlich liegen ein Larav
 - Standort wird nicht beim Appstart abgefragt, sondern nur nach explizitem Tippen auf `Standort verwenden`.
 - Lokale Berechnung von Taupunkt und absoluter Feuchte ohne Netzwerk.
 - Erste Ergebnisvisualisierung mit Feuchtezone und Temperatur-Feuchte-Grafik.
-- Govee-H5075-Discovery-Spike: Sensor-Scan, Kandidatenliste, kopierbare Raw-BLE-Samples und testbarer Parser fuer passive Live-Advertisements. Der iPhone-Scanpfad ist mit echter H5075-Hardware validiert; macOS ist im FlutterBluePlus-Adapter bis zur TCC-Klaerung per Default gegated.
+- Govee-H5075-Spike: Sensor-Scan, Kandidatenliste, kopierbare Raw-BLE-Samples, passive Live-Advertisements, expliziter Read-only-GATT-History-Probe und Govee-nahe Historienansicht fuer geladene Temperatur-/Feuchteverlaeufe. Der iPhone-Scanpfad und der History-Resume-Pfad sind mit echter H5075-Hardware positiv getestet; macOS ist im FlutterBluePlus-Adapter bis zur TCC-Klaerung per Default gegated.
 - iOS-, Android-, macOS- und Web-Projektstruktur ist angelegt.
 
 ## Lokal starten
@@ -33,7 +33,7 @@ Der Open-Meteo-Pfad nutzt Netzwerk nur zur Laufzeit. Tests mocken Standort, Geoc
 
 Der Standortmodus ist auf dem iPhone manuell geprueft: Auswahl von `Standort`, explizites `Standort verwenden`, iOS-Berechtigungsdialog, GPS-basierter Wetterabruf und Fallback-Verhalten bleiben normale App-Pfade. Android ist fuer diesen iOS-first MVP bewusst nachgelagert, weil lokal die Android cmdline-tools fehlen. Die finale MVP-Checkliste mit automatisierten Nachweisen und Device-Szenarien liegt in `docs/MVP_TEST_CHECKLIST.md`.
 
-Der Govee-H5075-Spike ist als Datenquelle `Sensor` in der App sichtbar. Er nutzt lokale BLE-Advertisements, keine Cloud und keinen Govee-Account. Echte H5075-Werte wurden auf dem iPhone dekodiert und uebernommen (`GVH5075_47EE`, `22,0 °C`, `29,1 %`, Batterie `95 %`). Ein erstes macOS-Sample ist ebenfalls dokumentiert und in Tests abgedeckt; der macOS-Pluginpfad bleibt wegen TCC-Crash per Default deaktiviert. Testscript und Raw-Sample-Hinweise stehen in `docs/GOVEE_H5075_DISCOVERY.md`.
+Der Govee-H5075-Spike ist als Datenquelle `Sensor` in der App sichtbar. Er nutzt lokale BLE-Advertisements, keine Cloud und keinen Govee-Account. Echte H5075-Werte wurden auf dem iPhone dekodiert und uebernommen (`GVH5075_47EE`, `22,0 °C`, `29,1 %`, Batterie `95 %`). Der explizite GATT-Probe sendet nur allowlisted Current-, Battery- und History-Read-Requests; ein Resume-Chunk `2306 -> 1` wurde am 2026-05-02 praktisch positiv bis `-1m` getestet (`2114` eindeutige Records, Batterie `95 %`). Geladene History kann ueber `Historie` in einer Govee-nahen Ansicht mit Zeitraum-Tabs, Temperatur-/Feuchte-Charts und Max/Avg/Min angezeigt werden. Ein erstes macOS-Sample ist ebenfalls dokumentiert und in Tests abgedeckt; der macOS-Pluginpfad bleibt wegen TCC-Crash per Default deaktiviert. Testscript und Raw-Sample-Hinweise stehen in `docs/GOVEE_H5075_DISCOVERY.md` und `docs/GOVEE_H5075_HISTORY_PROBE.md`.
 
 Auf dem angeschlossenen iPhone starten:
 

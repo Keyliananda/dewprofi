@@ -103,7 +103,9 @@ class GoveeH5075AdvertisementParser {
     final isNegative = (encoded & 0x800000) != 0;
     final magnitude = encoded & 0x7FFFFF;
     final humidityTenths = magnitude % 1000;
-    final temperatureCelsius = (isNegative ? -magnitude : magnitude) / 10000.0;
+    final temperatureTenths = magnitude ~/ 1000;
+    final temperatureCelsius =
+        (isNegative ? -temperatureTenths : temperatureTenths) / 10.0;
     final relativeHumidityPercent = humidityTenths / 10.0;
     final rawBatteryPercent = payload[4].toUnsigned(8);
     final batteryPercent = rawBatteryPercent == 0 ? null : rawBatteryPercent;

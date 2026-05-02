@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import '../../core/sensors/ble_advertisement.dart';
 import '../../core/sensors/sensor_measurement.dart';
 import '../sensors/ble_advertisement_scanner.dart';
+import 'govee_h5075_gatt_probe.dart';
+import 'govee_h5075_history_overview.dart';
 import 'govee_h5075_parser.dart';
 
 class GoveeH5075SpikePanel extends StatelessWidget {
@@ -13,20 +15,32 @@ class GoveeH5075SpikePanel extends StatelessWidget {
     required this.visibleAdvertisements,
     required this.minimumRssi,
     required this.discoveries,
+    required this.gattProbeSnapshot,
+    required this.historyProbeWindow,
     required this.onStartScan,
     required this.onStopScan,
     required this.onMinimumRssiChanged,
     required this.onApplyMeasurement,
+    required this.onStartGattProbe,
+    required this.onStartHistoryChunk,
+    required this.onAbortGattProbe,
+    required this.onHistoryProbeWindowChanged,
   });
 
   final BleScanSnapshot snapshot;
   final List<BleAdvertisement> visibleAdvertisements;
   final int minimumRssi;
   final List<GoveeH5075Discovery> discoveries;
+  final GoveeH5075GattProbeSnapshot gattProbeSnapshot;
+  final GoveeH5075HistoryProbeWindow historyProbeWindow;
   final VoidCallback onStartScan;
   final VoidCallback onStopScan;
   final ValueChanged<int> onMinimumRssiChanged;
   final ValueChanged<LiveSensorMeasurement> onApplyMeasurement;
+  final ValueChanged<BleAdvertisement> onStartGattProbe;
+  final ValueChanged<GoveeH5075HistoryChunk> onStartHistoryChunk;
+  final VoidCallback onAbortGattProbe;
+  final ValueChanged<GoveeH5075HistoryProbeWindow> onHistoryProbeWindowChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -78,9 +92,20 @@ class GoveeH5075SpikePanel extends StatelessWidget {
             _DiscoveryTile(
               discovery: discovery,
               onApplyMeasurement: onApplyMeasurement,
+              onStartGattProbe: onStartGattProbe,
+              probeRunning: gattProbeSnapshot.isRunning,
             ),
             const SizedBox(height: 10),
           ],
+        const SizedBox(height: 4),
+        _GattProbePanel(
+          snapshot: gattProbeSnapshot,
+          historyProbeWindow: historyProbeWindow,
+          hasCandidate: discoveries.isNotEmpty,
+          onAbort: onAbortGattProbe,
+          onStartHistoryChunk: onStartHistoryChunk,
+          onHistoryProbeWindowChanged: onHistoryProbeWindowChanged,
+        ),
         if (visibleAdvertisements.isNotEmpty) ...[
           const SizedBox(height: 4),
           Text('Raw Samples', style: theme.textTheme.titleSmall),
@@ -186,10 +211,14 @@ class _DiscoveryTile extends StatelessWidget {
   const _DiscoveryTile({
     required this.discovery,
     required this.onApplyMeasurement,
+    required this.onStartGattProbe,
+    required this.probeRunning,
   });
 
   final GoveeH5075Discovery discovery;
   final ValueChanged<LiveSensorMeasurement> onApplyMeasurement;
+  final ValueChanged<BleAdvertisement> onStartGattProbe;
+  final bool probeRunning;
 
   @override
   Widget build(BuildContext context) {
@@ -256,11 +285,38 @@ class _DiscoveryTile extends StatelessWidget {
               const SizedBox(height: 10),
               Align(
                 alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      key: const ValueKey('apply-govee-measurement-button'),
+                      onPressed: () => onApplyMeasurement(measurement),
+                      icon: const Icon(Icons.arrow_circle_right),
+                      label: const Text('Wert uebernehmen'),
+                    ),
+                    OutlinedButton.icon(
+                      key: const ValueKey('start-govee-gatt-probe-button'),
+                      onPressed: probeRunning
+                          ? null
+                          : () => onStartGattProbe(advertisement),
+                      icon: const Icon(Icons.history),
+                      label: const Text('GATT-Probe'),
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
                 child: OutlinedButton.icon(
-                  key: const ValueKey('apply-govee-measurement-button'),
-                  onPressed: () => onApplyMeasurement(measurement),
-                  icon: const Icon(Icons.arrow_circle_right),
-                  label: const Text('Wert uebernehmen'),
+                  key: const ValueKey('start-govee-gatt-probe-button'),
+                  onPressed: probeRunning
+                      ? null
+                      : () => onStartGattProbe(advertisement),
+                  icon: const Icon(Icons.history),
+                  label: const Text('GATT-Probe'),
                 ),
               ),
             ],
@@ -268,6 +324,346 @@ class _DiscoveryTile extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _GattProbePanel extends StatelessWidget {
+  const _GattProbePanel({
+    required this.snapshot,
+    required this.historyProbeWindow,
+    required this.hasCandidate,
+    required this.onAbort,
+    required this.onStartHistoryChunk,
+    required this.onHistoryProbeWindowChanged,
+  });
+
+  final GoveeH5075GattProbeSnapshot snapshot;
+  final GoveeH5075HistoryProbeWindow historyProbeWindow;
+  final bool hasCandidate;
+  final VoidCallback onAbort;
+  final ValueChanged<GoveeH5075HistoryChunk> onStartHistoryChunk;
+  final ValueChanged<GoveeH5075HistoryProbeWindow> onHistoryProbeWindowChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isRunning = snapshot.isRunning;
+    final historyChunk = snapshot.effectiveHistoryChunk;
+    final historyDiagnostics = snapshot.historyDiagnostics;
+    final nextHistoryChunk = historyDiagnostics?.nextRecommendedChunk;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.history_toggle_off, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'History-Probe',
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+                if (isRunning)
+                  IconButton(
+                    tooltip: 'GATT-Probe abbrechen',
+                    onPressed: onAbort,
+                    icon: const Icon(Icons.stop_circle),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SegmentedButton<GoveeH5075HistoryProbeWindow>(
+                segments: const [
+                  ButtonSegment(
+                    value: GoveeH5075HistoryProbeWindow.tenMinutes,
+                    label: Text('10 min'),
+                  ),
+                  ButtonSegment(
+                    value: GoveeH5075HistoryProbeWindow.oneHour,
+                    label: Text('1 h'),
+                  ),
+                  ButtonSegment(
+                    value: GoveeH5075HistoryProbeWindow.oneDay,
+                    label: Text('24 h'),
+                  ),
+                  ButtonSegment(
+                    value: GoveeH5075HistoryProbeWindow.sevenDays,
+                    label: Text('7 d'),
+                  ),
+                  ButtonSegment(
+                    value: GoveeH5075HistoryProbeWindow.twentyDays,
+                    label: Text('20 d'),
+                  ),
+                  ButtonSegment(
+                    value: GoveeH5075HistoryProbeWindow.thirtyDays,
+                    label: Text('30 d'),
+                  ),
+                ],
+                selected: {historyProbeWindow},
+                onSelectionChanged: isRunning
+                    ? null
+                    : (selection) =>
+                          _selectHistoryWindow(context, selection.single),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (historyProbeWindow == GoveeH5075HistoryProbeWindow.sevenDays)
+              _ProbeNotice(
+                icon: Icons.schedule,
+                text:
+                    '7 Tage fragt 10080 Minuten an. Erst nach stabilem 24-h-Log verwenden; Abbruch bleibt moeglich.',
+              ),
+            if (historyProbeWindow == GoveeH5075HistoryProbeWindow.twentyDays)
+              const _ProbeNotice(
+                icon: Icons.warning_amber,
+                text:
+                    'Experimenteller 20-Tage-Abruf: 28800 Minuten, kann lange dauern, abbrechen oder die Verbindung verlieren.',
+              ),
+            if (historyProbeWindow == GoveeH5075HistoryProbeWindow.thirtyDays)
+              const _ProbeNotice(
+                icon: Icons.warning_amber,
+                text:
+                    'Experimenteller 30-Tage-Abruf: 43200 Minuten, unbestaetigt fuer H5075 und nur fuer diesen Hardwaretest.',
+              ),
+            if (historyProbeWindow == GoveeH5075HistoryProbeWindow.sevenDays ||
+                historyProbeWindow == GoveeH5075HistoryProbeWindow.twentyDays ||
+                historyProbeWindow == GoveeH5075HistoryProbeWindow.thirtyDays)
+              const SizedBox(height: 8),
+            _GattStatusLine(snapshot: snapshot, hasCandidate: hasCandidate),
+            if (snapshot.currentMeasurement != null ||
+                snapshot.batteryPercent != null ||
+                historyChunk != null ||
+                snapshot.historyRecords.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: [
+                  if (historyChunk != null)
+                    _MiniMetric(
+                      label: 'Chunk',
+                      value: historyChunk.rangeLabel,
+                      width: 118,
+                    ),
+                  if (historyDiagnostics != null)
+                    _MiniMetric(
+                      label: 'Unique',
+                      value: '${historyDiagnostics.uniqueRecords}',
+                    ),
+                  if (historyDiagnostics?.hasRecords ?? false)
+                    _MiniMetric(
+                      label: 'Range',
+                      value: historyDiagnostics!.rangeLabel,
+                      width: 132,
+                    ),
+                  if (snapshot.currentMeasurement != null)
+                    _MiniMetric(
+                      label: 'GATT Temp',
+                      value:
+                          '${_formatNumber(snapshot.currentMeasurement!.temperatureCelsius)} °C',
+                    ),
+                  if (snapshot.currentMeasurement != null)
+                    _MiniMetric(
+                      label: 'GATT rF',
+                      value:
+                          '${_formatNumber(snapshot.currentMeasurement!.relativeHumidityPercent)} %',
+                    ),
+                  if (snapshot.batteryPercent != null)
+                    _MiniMetric(
+                      label: 'GATT Akku',
+                      value: '${snapshot.batteryPercent} %',
+                    ),
+                  if (snapshot.historyRecords.isNotEmpty)
+                    _MiniMetric(
+                      label: 'History',
+                      value: '${snapshot.historyRecords.length}',
+                    ),
+                ],
+              ),
+            ],
+            if (nextHistoryChunk != null) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ProbeNotice(
+                      icon: Icons.playlist_add_check,
+                      text: 'Naechster Chunk ${nextHistoryChunk.rangeLabel}',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    key: const ValueKey(
+                      'start-govee-next-history-chunk-button',
+                    ),
+                    onPressed: isRunning || snapshot.device == null
+                        ? null
+                        : () => onStartHistoryChunk(nextHistoryChunk),
+                    icon: const Icon(Icons.play_arrow),
+                    label: const Text('Folgechunk'),
+                  ),
+                ],
+              ),
+            ],
+            if (snapshot.historyRecords.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              FilledButton.icon(
+                key: const ValueKey('open-govee-history-overview-button'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        GoveeH5075HistoryOverviewPage(snapshot: snapshot),
+                  ),
+                ),
+                icon: const Icon(Icons.insert_chart_outlined),
+                label: const Text('Historie'),
+              ),
+            ],
+            if (snapshot.rawEvents.isNotEmpty ||
+                snapshot.services.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Raw GATT Log',
+                      style: theme.textTheme.labelLarge,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Raw GATT Log kopieren',
+                    onPressed: () => Clipboard.setData(
+                      ClipboardData(text: snapshot.toDebugText()),
+                    ),
+                    icon: const Icon(Icons.copy),
+                  ),
+                ],
+              ),
+              SelectableText(
+                snapshot.toDebugText(),
+                maxLines: 12,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _selectHistoryWindow(
+    BuildContext context,
+    GoveeH5075HistoryProbeWindow window,
+  ) async {
+    if (!window.requiresConfirmation) {
+      onHistoryProbeWindowChanged(window);
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          '${window.label.replaceAll(' d', '')}-Tage-Probe aktivieren?',
+        ),
+        content: Text(
+          'Dieser experimentelle Abruf fragt ${window.startMinutesBack} Minuten H5075-History an. Er kann bis zum Timeout laufen, abbrechen oder die Govee-App kurz blockieren.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text('${window.label.replaceAll(' d', '')} Tage aktivieren'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      onHistoryProbeWindowChanged(window);
+    }
+  }
+}
+
+class _ProbeNotice extends StatelessWidget {
+  const _ProbeNotice({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GattStatusLine extends StatelessWidget {
+  const _GattStatusLine({required this.snapshot, required this.hasCandidate});
+
+  final GoveeH5075GattProbeSnapshot snapshot;
+  final bool hasCandidate;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final message = snapshot.message ?? _fallbackMessage();
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          snapshot.isRunning ? Icons.bluetooth_connected : Icons.bluetooth,
+          size: 18,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            message,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _fallbackMessage() {
+    if (!hasCandidate) {
+      return 'Erst H5075-Kandidat scannen, dann GATT-Probe manuell starten.';
+    }
+    return 'Manueller Probe-Flow: Service Discovery, aktuelle Werte, Batterie, kurzes History-Fenster.';
   }
 }
 
@@ -321,15 +717,20 @@ class _RawAdvertisementTile extends StatelessWidget {
 }
 
 class _MiniMetric extends StatelessWidget {
-  const _MiniMetric({required this.label, required this.value});
+  const _MiniMetric({
+    required this.label,
+    required this.value,
+    this.width = 86,
+  });
 
   final String label;
   final String value;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 86,
+      width: width,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -1,6 +1,6 @@
 # Govee H5075 Discovery Spike
 
-Status 2026-05-01: Discovery-Spike implementiert; erster echter macOS-Advertisement-Capture fuer `GVH5075_ACC0` liegt vor. Der iPhone-Scanpfad ist mit echter H5075-Hardware validiert: `GVH5075_47EE` wurde bei `-41 dBm` dekodiert und in der App als `22,0 °C`, `29,1 % rF` und `95 %` Batterie angezeigt. Der FlutterBluePlus-macOS-Scan ist im App-Adapter vorerst per Default deaktiviert, weil der native Darwin-Pfad beim ersten Scan trotz vorhandener Bundle-Keys in TCC crashte.
+Status 2026-05-01: Discovery-Spike implementiert; erster echter macOS-Advertisement-Capture fuer `GVH5075_ACC0` liegt vor. Der iPhone-Scanpfad ist mit echter H5075-Hardware validiert: `GVH5075_47EE` wurde bei `-41 dBm` dekodiert und in der App als `22,0 °C`, `29,1 % rF` und `95 %` Batterie angezeigt. Der FlutterBluePlus-macOS-Scan ist im App-Adapter vorerst per Default deaktiviert, weil der native Darwin-Pfad beim ersten Scan trotz vorhandener Bundle-Keys in TCC crashte. Der Research- und Try-and-Error-Plan fuer weitere passive und aktive Proben steht in `docs/GOVEE_H5075_PROBE_PLAN.md`; der vorbereitete 9.4-GATT-History-Probe steht in `docs/GOVEE_H5075_HISTORY_PROBE.md`.
 
 ## Ziel
 
@@ -15,6 +15,12 @@ Der Spike bereitet den lokalen BLE-Pfad fuer Govee H5075 vor:
 
 Nicht enthalten: GATT-Verbindung, History-Sync, Govee-Account, Cloud/OpenAPI.
 
+Update 9.4: GATT bleibt vom normalen Scan getrennt. Der neue History-Probe ist
+ein separater Button im Sensor-Spike und nutzt die im Nutzer-Screenshot
+gesicherten Govee-App-Werte als erste Gegenprobe: `Veranda`, `22,0 °C`,
+`29,5 % rF`, `83 %` Batterie und mindestens eine sichtbare Woche History vom
+24. Apr. 18:46 bis 1. Mai 18:46.
+
 ## Implementierter Schnitt
 
 - Scanner-Port: `lib/features/sensors/ble_advertisement_scanner.dart`
@@ -24,7 +30,7 @@ Nicht enthalten: GATT-Verbindung, History-Sync, Govee-Account, Cloud/OpenAPI.
 - H5075-Parser: `lib/features/govee/govee_h5075_parser.dart`
 - Spike-UI: Datenquelle `Sensor` im Rechner
 
-Der Parser dekodiert nur das bekannte Govee-Manufacturer-Layout mit Company-ID `0xEC88`, einem Padding-Byte, 24-Bit Temperatur/Feuchte-Wert und Batteriebyte. FlutterBluePlus entfernt die zwei Company-ID-Bytes bereits aus der Manufacturer-Payload; auf Darwin wird aus dem Raw-Wert `88 EC 00 02 92 76 00 00` also die Parser-Payload `00 02 92 76 00 00`. Unplausible oder unbekannte Payloads bleiben Raw-Debug-Samples; es werden keine Firmware-Details erfunden.
+Der Parser dekodiert nur das bekannte Govee-Manufacturer-Layout mit Company-ID `0xEC88`, einem Padding-Byte, 24-Bit Temperatur/Feuchte-Wert und Batteriebyte. FlutterBluePlus entfernt die zwei Company-ID-Bytes bereits aus der Manufacturer-Payload; auf Darwin wird aus dem Raw-Wert `88 EC 00 02 92 76 00 00` also die Parser-Payload `00 02 92 76 00 00`. Seit Paket 9.3 folgt die Temperaturdekodierung der durch Heckie75/wcbonner/Theengs belegten Zehntelgrad-Formel `int(encoded / 1000) / 10`; die Feuchte bleibt `encoded % 1000 / 10`. Unplausible oder unbekannte Payloads bleiben Raw-Debug-Samples; es werden keine Firmware-Details erfunden.
 
 Der RSSI-Filter sitzt bewusst vor Discovery, Parser und Raw-Sample-Anzeige. Der
 Scanner sammelt weiterhin Advertisements, aber die Spike-UI zeigt nur Samples ab
@@ -62,9 +68,9 @@ manufacturer: 88 EC 00 02 92 76 00 00
 services: EC88
 ```
 
-Parser-Ergebnis fuer die von FlutterBluePlus getrimmte Payload `00 02 92 76 00 00`:
+Parser-Ergebnis fuer die von FlutterBluePlus getrimmte Payload `00 02 92 76 00 00` nach 9.3:
 
-- Temperatur: 16,8566 °C
+- Temperatur: 16,8 °C
 - Relative Feuchte: 56,6 %
 - Batteriebyte: `0x00`, aktuell als unbekannt behandelt
 

@@ -5,6 +5,7 @@ import 'package:dewprofi/app/dewprofi_app.dart';
 import 'package:dewprofi/core/storage/calculator_preferences_store.dart';
 import 'package:dewprofi/core/psychrometrics/psychrometrics.dart';
 import 'package:dewprofi/core/sensors/ble_advertisement.dart';
+import 'package:dewprofi/features/govee/govee_h5075_gatt_probe.dart';
 import 'package:dewprofi/features/govee/govee_h5075_parser.dart';
 import 'package:dewprofi/features/location/location_service.dart';
 import 'package:dewprofi/features/sensors/ble_advertisement_scanner.dart';
@@ -606,7 +607,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('GVH5075_ACC0'), findsWidgets);
-      expect(find.text('16,9 °C'), findsWidgets);
+      expect(find.text('16,8 °C'), findsWidgets);
       expect(find.text('56,6 %'), findsWidgets);
       expect(find.text('0 %'), findsNothing);
 
@@ -642,6 +643,397 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'govee history probe starts from a scanned candidate and logs raw data',
+    (tester) async {
+      final scanner = _FakeBleAdvertisementScanner();
+      final gattProbe = _FakeGoveeH5075GattProbe();
+      await _pumpCalculator(
+        tester,
+        goveeScanner: scanner,
+        goveeGattProbe: gattProbe,
+      );
+      await _expandInput(tester);
+
+      await tester.ensureVisible(find.text('Sensor'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sensor'));
+      await tester.pumpAndSettle();
+
+      final advertisement = BleAdvertisement(
+        deviceId: 'AA:BB:CC:DD:EE:47',
+        deviceName: 'GVH5075_47EE',
+        rssi: -41,
+        observedAt: DateTime(2026, 5, 1, 18, 47),
+        manufacturerData: [
+          BleManufacturerData(
+            companyId: goveeManufacturerCompanyId,
+            data: const [0x00, 0x03, 0x5C, 0x87, 0x53, 0x00],
+          ),
+        ],
+      );
+      scanner.emit(
+        BleScanSnapshot(
+          status: BleScannerStatus.idle,
+          advertisements: [advertisement],
+          message: 'Scan beendet.',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey('start-govee-gatt-probe-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gattProbe.lastRequest?.advertisement, same(advertisement));
+      expect(
+        gattProbe.lastRequest?.historyWindow,
+        GoveeH5075HistoryProbeWindow.tenMinutes,
+      );
+      expect(scanner.stopCount, 1);
+
+      gattProbe.emit(
+        GoveeH5075GattProbeSnapshot(
+          status: GoveeH5075GattProbeStatus.completed,
+          message: 'GATT-Probe abgeschlossen.',
+          device: advertisement,
+          historyWindow: GoveeH5075HistoryProbeWindow.tenMinutes,
+          currentMeasurement: GoveeH5075GattMeasurement(
+            temperatureCelsius: 22,
+            relativeHumidityPercent: 29.5,
+            batteryPercent: 83,
+            observedAt: DateTime(2026, 5, 1, 18, 47),
+          ),
+          batteryPercent: 83,
+          rawEvents: [
+            GoveeH5075GattRawEvent(
+              timestamp: DateTime(2026, 5, 1, 18, 47),
+              direction: '<-- notify',
+              characteristicUuid: goveeH5075CommandCharacteristicUuid,
+              bytes: const [0xAA, 0x01, 0x08, 0x98, 0x0B, 0x86, 0x53],
+            ),
+          ],
+          historyRecords: [
+            GoveeH5075HistoryRecord(
+              minutesBack: 3,
+              observedAt: DateTime(2026, 5, 1, 18, 44),
+              temperatureCelsius: 22,
+              relativeHumidityPercent: 29.5,
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('GATT Akku'), findsOneWidget);
+      expect(find.text('83 %'), findsWidgets);
+      expect(find.text('Raw GATT Log'), findsOneWidget);
+      expect(find.textContaining('AA 01 08 98 0B 86 53'), findsOneWidget);
+    },
+  );
+
+  testWidgets('govee history overview renders loaded records as charts', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(430, 1100);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final scanner = _FakeBleAdvertisementScanner();
+    final gattProbe = _FakeGoveeH5075GattProbe();
+    await _pumpCalculator(
+      tester,
+      goveeScanner: scanner,
+      goveeGattProbe: gattProbe,
+    );
+    await _expandInput(tester);
+
+    await tester.ensureVisible(find.text('Sensor'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sensor'));
+    await tester.pumpAndSettle();
+
+    final advertisement = BleAdvertisement(
+      deviceId: 'AA:BB:CC:DD:EE:47',
+      deviceName: 'GVH5075_47EE',
+      rssi: -41,
+      observedAt: DateTime(2026, 5, 2, 7, 24),
+      manufacturerData: [
+        BleManufacturerData(
+          companyId: goveeManufacturerCompanyId,
+          data: const [0x00, 0x03, 0x5C, 0x87, 0x53, 0x00],
+        ),
+      ],
+    );
+    scanner.emit(
+      BleScanSnapshot(
+        status: BleScannerStatus.idle,
+        advertisements: [advertisement],
+        message: 'Scan beendet.',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final startedAt = DateTime(2026, 5, 2, 7, 24);
+    gattProbe.emit(
+      GoveeH5075GattProbeSnapshot(
+        status: GoveeH5075GattProbeStatus.completed,
+        device: advertisement,
+        historyWindow: GoveeH5075HistoryProbeWindow.thirtyDays,
+        historyChunk: GoveeH5075HistoryProbeWindow.thirtyDays.toChunk(),
+        currentMeasurement: GoveeH5075GattMeasurement(
+          temperatureCelsius: 15.2,
+          relativeHumidityPercent: 52.2,
+          batteryPercent: 95,
+          observedAt: startedAt,
+        ),
+        batteryPercent: 95,
+        historyRecords: [
+          for (var minutesBack = 240; minutesBack >= 1; minutesBack -= 15)
+            GoveeH5075HistoryRecord(
+              minutesBack: minutesBack,
+              observedAt: startedAt.subtract(Duration(minutes: minutesBack)),
+              temperatureCelsius: 10 + minutesBack / 40,
+              relativeHumidityPercent: 45 + minutesBack / 60,
+            ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('open-govee-history-overview-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('GVH5075_47EE'), findsOneWidget);
+    expect(find.text('History geladen'), findsOneWidget);
+    expect(find.text('15,2'), findsOneWidget);
+    expect(find.text('52,2'), findsOneWidget);
+    expect(find.text('Monat'), findsOneWidget);
+    expect(find.text('Temperatur'), findsWidgets);
+    expect(find.text('Relative Luftfeuchtigkeit'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey('govee-history-temperature-chart')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('govee-history-humidity-chart')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'govee history probe exposes 7 day and confirmed 20/30 day windows',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1000, 1200);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final scanner = _FakeBleAdvertisementScanner();
+      final gattProbe = _FakeGoveeH5075GattProbe();
+      await _pumpCalculator(
+        tester,
+        goveeScanner: scanner,
+        goveeGattProbe: gattProbe,
+      );
+      await _expandInput(tester);
+
+      await tester.ensureVisible(find.text('Sensor'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sensor'));
+      await tester.pumpAndSettle();
+
+      final advertisement = BleAdvertisement(
+        deviceId: 'AA:BB:CC:DD:EE:47',
+        deviceName: 'GVH5075_47EE',
+        rssi: -41,
+        observedAt: DateTime(2026, 5, 1, 18, 47),
+        manufacturerData: [
+          BleManufacturerData(
+            companyId: goveeManufacturerCompanyId,
+            data: const [0x00, 0x03, 0x5C, 0x87, 0x53, 0x00],
+          ),
+        ],
+      );
+      scanner.emit(
+        BleScanSnapshot(
+          status: BleScannerStatus.idle,
+          advertisements: [advertisement],
+          message: 'Scan beendet.',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('7 d'));
+      await tester.tap(find.text('7 d'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('10080 Minuten'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('start-govee-gatt-probe-button')),
+        -160,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('start-govee-gatt-probe-button')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        gattProbe.lastRequest?.historyWindow,
+        GoveeH5075HistoryProbeWindow.sevenDays,
+      );
+      gattProbe.emit(
+        GoveeH5075GattProbeSnapshot(
+          status: GoveeH5075GattProbeStatus.completed,
+          device: advertisement,
+          historyWindow: GoveeH5075HistoryProbeWindow.sevenDays,
+          message: 'GATT-Probe abgeschlossen.',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('20 d'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('20 d'));
+      await tester.pumpAndSettle();
+      expect(find.text('20-Tage-Probe aktivieren?'), findsOneWidget);
+      await tester.tap(find.text('Abbrechen'));
+      await tester.pumpAndSettle();
+      expect(
+        gattProbe.lastRequest?.historyWindow,
+        GoveeH5075HistoryProbeWindow.sevenDays,
+      );
+
+      await tester.ensureVisible(find.text('20 d'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('20 d'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('20 Tage aktivieren'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('28800 Minuten'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('30 d'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('30 d'));
+      await tester.pumpAndSettle();
+      expect(find.text('30-Tage-Probe aktivieren?'), findsOneWidget);
+      await tester.tap(find.text('30 Tage aktivieren'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('43200 Minuten'), findsOneWidget);
+    },
+  );
+
+  testWidgets('govee history probe can start the recommended resume chunk', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1000, 1200);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final scanner = _FakeBleAdvertisementScanner();
+    final gattProbe = _FakeGoveeH5075GattProbe();
+    await _pumpCalculator(
+      tester,
+      goveeScanner: scanner,
+      goveeGattProbe: gattProbe,
+    );
+    await _expandInput(tester);
+
+    await tester.ensureVisible(find.text('Sensor'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sensor'));
+    await tester.pumpAndSettle();
+
+    final advertisement = BleAdvertisement(
+      deviceId: 'AA:BB:CC:DD:EE:47',
+      deviceName: 'GVH5075_47EE',
+      rssi: -41,
+      observedAt: DateTime(2026, 5, 1, 18, 47),
+      manufacturerData: [
+        BleManufacturerData(
+          companyId: goveeManufacturerCompanyId,
+          data: const [0x00, 0x03, 0x5C, 0x87, 0x53, 0x00],
+        ),
+      ],
+    );
+    scanner.emit(
+      BleScanSnapshot(
+        status: BleScannerStatus.idle,
+        advertisements: [advertisement],
+        message: 'Scan beendet.',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('20 d'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('20 d'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('20 Tage aktivieren'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('start-govee-gatt-probe-button')),
+      -160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('start-govee-gatt-probe-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final startedAt = DateTime(2026, 5, 1, 18, 47);
+    gattProbe.emit(
+      GoveeH5075GattProbeSnapshot(
+        status: GoveeH5075GattProbeStatus.completed,
+        device: advertisement,
+        historyWindow: GoveeH5075HistoryProbeWindow.twentyDays,
+        historyChunk: GoveeH5075HistoryProbeWindow.twentyDays.toChunk(),
+        message: 'GATT-Probe abgeschlossen.',
+        historyRecords: [
+          GoveeH5075HistoryRecord(
+            minutesBack: 28800,
+            observedAt: startedAt.subtract(const Duration(minutes: 28800)),
+            temperatureCelsius: 18.1,
+            relativeHumidityPercent: 42.2,
+          ),
+          GoveeH5075HistoryRecord(
+            minutesBack: 14997,
+            observedAt: startedAt.subtract(const Duration(minutes: 14997)),
+            temperatureCelsius: 19.4,
+            relativeHumidityPercent: 37.1,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('14996 -> 1'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('start-govee-next-history-chunk-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(gattProbe.lastRequest?.advertisement, same(advertisement));
+    expect(
+      gattProbe.lastRequest?.historyWindow,
+      GoveeH5075HistoryProbeWindow.twentyDays,
+    );
+    expect(gattProbe.lastRequest?.customHistoryChunk?.startMinutesBack, 14996);
+    expect(gattProbe.lastRequest?.customHistoryChunk?.endMinutesBack, 1);
+  });
 }
 
 Future<void> _expandInput(WidgetTester tester) async {
@@ -654,6 +1046,7 @@ Future<_FakePreferencesStore> _pumpCalculator(
   WeatherService? weatherService,
   LocationService? locationService,
   BleAdvertisementScanner? goveeScanner,
+  GoveeH5075GattProbe? goveeGattProbe,
   CalculatorPreferences? initialPreferences,
 }) async {
   final preferencesStore = _FakePreferencesStore(initialPreferences);
@@ -663,6 +1056,7 @@ Future<_FakePreferencesStore> _pumpCalculator(
       locationService: locationService,
       preferencesStore: preferencesStore,
       goveeScanner: goveeScanner,
+      goveeGattProbe: goveeGattProbe,
     ),
   );
   await tester.pump();
@@ -846,6 +1240,53 @@ class _FakeLocationService implements LocationService {
       throw error;
     }
     return coordinates;
+  }
+}
+
+class _FakeGoveeH5075GattProbe implements GoveeH5075GattProbe {
+  final _controller = StreamController<GoveeH5075GattProbeSnapshot>.broadcast();
+
+  GoveeH5075GattProbeRequest? lastRequest;
+  int abortCount = 0;
+  bool disposed = false;
+
+  @override
+  Stream<GoveeH5075GattProbeSnapshot> get snapshots async* {
+    yield const GoveeH5075GattProbeSnapshot.idle();
+    yield* _controller.stream;
+  }
+
+  @override
+  Future<void> run(GoveeH5075GattProbeRequest request) async {
+    lastRequest = request;
+    final historyChunk = request.historyChunk;
+    emit(
+      GoveeH5075GattProbeSnapshot(
+        status: GoveeH5075GattProbeStatus.requestingHistory,
+        device: request.advertisement,
+        historyWindow: request.historyWindow,
+        historyChunk: historyChunk,
+        message:
+            'History-Chunk ${historyChunk.debugLabel} wird angefragt; Timeout ${historyChunk.timeoutLabel}.',
+      ),
+    );
+  }
+
+  @override
+  Future<void> abort() async {
+    abortCount += 1;
+  }
+
+  void emit(GoveeH5075GattProbeSnapshot snapshot) {
+    if (!_controller.isClosed) {
+      _controller.add(snapshot);
+    }
+  }
+
+  @override
+  void dispose() {
+    disposed = true;
+    _controller.close();
   }
 }
 
