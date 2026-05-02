@@ -625,7 +625,19 @@ class _HistoryMetricCard extends StatefulWidget {
 }
 
 class _HistoryMetricCardState extends State<_HistoryMetricCard> {
+  final _scrollController = ScrollController();
   GoveeH5075HistoryChartPoint? _selectedPoint;
+  double _horizontalScale = 1;
+  double _scaleGestureStartScale = 1;
+
+  String get _chartKeySuffix =>
+      widget.chart.title == 'Temperatur' ? 'temperature' : 'humidity';
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(covariant _HistoryMetricCard oldWidget) {
@@ -650,13 +662,50 @@ class _HistoryMetricCardState extends State<_HistoryMetricCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              chart.title,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: const Color(0xFF303238),
-                fontWeight: FontWeight.w500,
-              ),
+            Row(
+              children: [
+                const SizedBox(width: 88),
+                Expanded(
+                  child: Text(
+                    chart.title,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: const Color(0xFF303238),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 88,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      _ChartIconButton(
+                        key: ValueKey(
+                          'govee-history-$_chartKeySuffix-zoom-out-button',
+                        ),
+                        tooltip: 'Verkleinern',
+                        icon: Icons.remove,
+                        onPressed: _horizontalScale <= 1.01
+                            ? null
+                            : () => _zoomBy(0.8),
+                      ),
+                      _ChartIconButton(
+                        key: ValueKey(
+                          'govee-history-$_chartKeySuffix-zoom-in-button',
+                        ),
+                        tooltip: 'Vergroessern',
+                        icon: Icons.add,
+                        onPressed: _horizontalScale >= 4
+                            ? null
+                            : () => _zoomBy(1.25),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
             SizedBox(
@@ -669,29 +718,49 @@ class _HistoryMetricCardState extends State<_HistoryMetricCard> {
                   Expanded(
                     child: LayoutBuilder(
                       builder: (context, constraints) {
-                        final size = Size(
+                        final chartWidth = math.max(
                           constraints.maxWidth,
-                          constraints.maxHeight,
+                          constraints.maxWidth * _horizontalScale,
                         );
-                        return GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTapDown: (details) =>
-                              _selectPoint(details.localPosition, size),
-                          onHorizontalDragUpdate: (details) =>
-                              _selectPoint(details.localPosition, size),
-                          child: CustomPaint(
+                        final size = Size(chartWidth, constraints.maxHeight);
+                        return Scrollbar(
+                          controller: _scrollController,
+                          thumbVisibility: _horizontalScale > 1.01,
+                          child: SingleChildScrollView(
                             key: ValueKey(
-                              chart.title == 'Temperatur'
-                                  ? 'govee-history-temperature-chart'
-                                  : 'govee-history-humidity-chart',
+                              'govee-history-$_chartKeySuffix-scroll',
                             ),
-                            painter: _HistoryLineChartPainter(
-                              chart: chart,
-                              lineColor: widget.lineColor,
-                              selectedPoint: selectedPoint,
-                              textStyle:
-                                  Theme.of(context).textTheme.labelSmall ??
-                                  const TextStyle(fontSize: 11),
+                            controller: _scrollController,
+                            scrollDirection: Axis.horizontal,
+                            child: SizedBox(
+                              width: chartWidth,
+                              height: constraints.maxHeight,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTapDown: (details) =>
+                                    _selectPoint(details.localPosition, size),
+                                onScaleStart: (_) =>
+                                    _scaleGestureStartScale = _horizontalScale,
+                                onScaleUpdate: (details) =>
+                                    _handleScaleUpdate(details),
+                                child: CustomPaint(
+                                  key: ValueKey(
+                                    chart.title == 'Temperatur'
+                                        ? 'govee-history-temperature-chart'
+                                        : 'govee-history-humidity-chart',
+                                  ),
+                                  painter: _HistoryLineChartPainter(
+                                    chart: chart,
+                                    lineColor: widget.lineColor,
+                                    selectedPoint: selectedPoint,
+                                    textStyle:
+                                        Theme.of(
+                                          context,
+                                        ).textTheme.labelSmall ??
+                                        const TextStyle(fontSize: 11),
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         );
@@ -746,6 +815,24 @@ class _HistoryMetricCardState extends State<_HistoryMetricCard> {
     );
   }
 
+  void _handleScaleUpdate(ScaleUpdateDetails details) {
+    if (details.pointerCount < 2 || details.scale == 1) {
+      return;
+    }
+    setState(() {
+      _horizontalScale = (_scaleGestureStartScale * details.scale).clamp(
+        1.0,
+        4.0,
+      );
+    });
+  }
+
+  void _zoomBy(double factor) {
+    setState(() {
+      _horizontalScale = (_horizontalScale * factor).clamp(1.0, 4.0);
+    });
+  }
+
   void _selectPoint(Offset localPosition, Size size) {
     final points = widget.chart.points;
     if (points.isEmpty || size.width <= 0) {
@@ -770,6 +857,39 @@ class _HistoryMetricCardState extends State<_HistoryMetricCard> {
       }
     }
     setState(() => _selectedPoint = nearest);
+  }
+}
+
+class _ChartIconButton extends StatelessWidget {
+  const _ChartIconButton({
+    super.key,
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: SizedBox(
+        width: 38,
+        height: 38,
+        child: IconButton(
+          onPressed: onPressed,
+          icon: Icon(icon, size: 20),
+          style: IconButton.styleFrom(
+            foregroundColor: const Color(0xFF0B8FD8),
+            disabledForegroundColor: const Color(0x668C96A0),
+            padding: EdgeInsets.zero,
+          ),
+        ),
+      ),
+    );
   }
 }
 

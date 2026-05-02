@@ -31,6 +31,7 @@ class FlutterBluePlusGoveeH5075GattProbe implements GoveeH5075GattProbe {
 
   BluetoothDevice? _activeDevice;
   GoveeH5075GattProbeRequest? _request;
+  GoveeH5075HistoryChunk? _activeHistoryChunk;
   GoveeH5075GattMeasurement? _currentMeasurement;
   int? _batteryPercent;
   int _rawHistoryNotificationsKept = 0;
@@ -60,6 +61,7 @@ class FlutterBluePlusGoveeH5075GattProbe implements GoveeH5075GattProbe {
     }
 
     _request = request;
+    _activeHistoryChunk = null;
     _rawEvents.clear();
     _historyRecords.clear();
     _historyMinutesBack.clear();
@@ -85,7 +87,6 @@ class FlutterBluePlusGoveeH5075GattProbe implements GoveeH5075GattProbe {
 
     final device = BluetoothDevice.fromId(request.advertisement.deviceId);
     _activeDevice = device;
-    final historyChunk = request.historyChunk;
 
     try {
       _emit(GoveeH5075GattProbeStatus.connecting, 'GATT-Verbindung startet.');
@@ -146,19 +147,7 @@ class FlutterBluePlusGoveeH5075GattProbe implements GoveeH5075GattProbe {
       await Future<void>.delayed(commandSettleDelay);
       _ensureNotAborted();
 
-      _emit(
-        GoveeH5075GattProbeStatus.requestingHistory,
-        'History-Chunk ${historyChunk.debugLabel} wird angefragt; Timeout ${historyChunk.timeoutLabel}.',
-      );
-      _historyDownloadStartedAt = DateTime.now();
-      _historyComplete = Completer<void>();
-      await _writeAllowlisted(
-        chars.command,
-        _protocol.buildHistoryRequestForChunk(historyChunk),
-        note: 'allowlisted history request 3301 ${historyChunk.rangeLabel}',
-      );
-      await _historyComplete!.future.timeout(historyChunk.timeout);
-      _ensureNotAborted();
+      await _runHistoryChunks(chars.command, request.historyChunk);
 
       _emit(
         GoveeH5075GattProbeStatus.completed,
@@ -177,6 +166,7 @@ class FlutterBluePlusGoveeH5075GattProbe implements GoveeH5075GattProbe {
     } on Object catch (error) {
       _emit(GoveeH5075GattProbeStatus.error, 'GATT-Probe Fehler: $error');
     } finally {
+      _activeHistoryChunk = null;
       _historyIdleTimer?.cancel();
       _historyIdleTimer = null;
       await _cleanupConnection();
@@ -269,12 +259,56 @@ class FlutterBluePlusGoveeH5075GattProbe implements GoveeH5075GattProbe {
     return added;
   }
 
+  Future<void> _runHistoryChunks(
+    BluetoothCharacteristic commandCharacteristic,
+    GoveeH5075HistoryChunk firstChunk,
+  ) async {
+    var historyChunk = firstChunk;
+    while (!_disposed && !_aborted) {
+      _activeHistoryChunk = historyChunk;
+      _historyCompletionMessage = null;
+      _emit(
+        GoveeH5075GattProbeStatus.requestingHistory,
+        'History-Chunk ${historyChunk.debugLabel} wird angefragt; Timeout ${historyChunk.timeoutLabel}.',
+      );
+      _historyDownloadStartedAt ??= DateTime.now();
+      _historyComplete = Completer<void>();
+      await _writeAllowlisted(
+        commandCharacteristic,
+        _protocol.buildHistoryRequestForChunk(historyChunk),
+        note: 'allowlisted history request 3301 ${historyChunk.rangeLabel}',
+      );
+      await _historyComplete!.future.timeout(historyChunk.timeout);
+      _ensureNotAborted();
+
+      final nextChunk = _nextHistoryChunkAfter(historyChunk);
+      if (nextChunk == null) {
+        return;
+      }
+      historyChunk = nextChunk;
+      _emit(
+        GoveeH5075GattProbeStatus.requestingHistory,
+        'Folgechunk ${historyChunk.rangeLabel} wird automatisch angefragt.',
+      );
+      await Future<void>.delayed(commandSettleDelay);
+      _ensureNotAborted();
+    }
+  }
+
+  GoveeH5075HistoryChunk? _nextHistoryChunkAfter(
+    GoveeH5075HistoryChunk historyChunk,
+  ) {
+    return GoveeH5075HistoryAutoResumePlan.nextChunk(
+      activeChunk: historyChunk,
+      records: _historyRecords,
+    );
+  }
+
   void _completeHistoryIfTargetReached() {
-    final request = _request;
-    if (request == null || _historyRecords.isEmpty) {
+    final historyChunk = _activeHistoryChunk ?? _request?.historyChunk;
+    if (historyChunk == null || _historyRecords.isEmpty) {
       return;
     }
-    final historyChunk = request.historyChunk;
     final minMinutesBack = _historyRecords
         .map((record) => record.minutesBack)
         .reduce((a, b) => a < b ? a : b);
@@ -286,15 +320,14 @@ class FlutterBluePlusGoveeH5075GattProbe implements GoveeH5075GattProbe {
   }
 
   void _armHistoryIdleCompletion() {
-    final request = _request;
+    final historyChunk = _activeHistoryChunk ?? _request?.historyChunk;
     final complete = _historyComplete;
-    if (request == null ||
+    if (historyChunk == null ||
         complete == null ||
         complete.isCompleted ||
         _historyRecords.isEmpty) {
       return;
     }
-    final historyChunk = request.historyChunk;
     _historyIdleTimer?.cancel();
     _historyIdleTimer = Timer(historyChunk.idleCompletionDelay, () {
       final complete = _historyComplete;
@@ -306,7 +339,7 @@ class FlutterBluePlusGoveeH5075GattProbe implements GoveeH5075GattProbe {
         return;
       }
       _completeHistoryIfNeeded(
-        'History-Datenstrom seit ${historyChunk.idleCompletionDelay.inSeconds} s ruhig; ${_historyRecords.length} Records gesichert, Verbindung wird getrennt.',
+        'History-Datenstrom seit ${historyChunk.idleCompletionDelay.inSeconds} s ruhig; ${_historyRecords.length} Records gesichert.',
       );
     });
   }
@@ -445,7 +478,7 @@ class FlutterBluePlusGoveeH5075GattProbe implements GoveeH5075GattProbe {
       message: message ?? _message,
       device: _request?.advertisement,
       historyWindow: _request?.historyWindow,
-      historyChunk: _request?.historyChunk,
+      historyChunk: _activeHistoryChunk ?? _request?.historyChunk,
       currentMeasurement: _currentMeasurement,
       batteryPercent: _batteryPercent,
       services: _services,

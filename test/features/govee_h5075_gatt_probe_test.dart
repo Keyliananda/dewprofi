@@ -180,6 +180,37 @@ void main() {
     );
   });
 
+  test('builds resume history request for observed 16138 to 1 chunk', () {
+    expect(
+      protocol.buildHistoryRequestForMinutes(
+        startMinutesBack: 16138,
+        endMinutesBack: 1,
+      ),
+      const [
+        0x33,
+        0x01,
+        0x3F,
+        0x0A,
+        0x00,
+        0x01,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x06,
+      ],
+    );
+  });
+
   test('long history windows carry bounded but larger timeouts', () {
     expect(GoveeH5075HistoryProbeWindow.oneDay.timeout.inSeconds, 45);
     expect(
@@ -306,6 +337,35 @@ void main() {
       expect(diagnostics.nextRecommendedChunk?.startMinutesBack, 14996);
       expect(diagnostics.nextRecommendedChunk?.endMinutesBack, 1);
       expect(diagnostics.nextRecommendedChunk?.rangeLabel, '14996 -> 1');
+    },
+  );
+
+  test(
+    'auto resume planner advances partial chunks and stops at newest end',
+    () {
+      final startedAt = DateTime(2026, 5, 1, 18, 47);
+      final firstChunk = GoveeH5075HistoryProbeWindow.twentyDays.toChunk();
+      final nextChunk = GoveeH5075HistoryAutoResumePlan.nextChunk(
+        activeChunk: firstChunk,
+        records: [
+          _historyRecord(28800, startedAt),
+          _historyRecord(16139, startedAt),
+        ],
+      );
+
+      expect(nextChunk?.rangeLabel, '16138 -> 1');
+
+      final finalChunk = GoveeH5075HistoryAutoResumePlan.nextChunk(
+        activeChunk: nextChunk!,
+        records: [
+          _historyRecord(28800, startedAt),
+          _historyRecord(16139, startedAt),
+          _historyRecord(16138, startedAt),
+          _historyRecord(1, startedAt),
+        ],
+      );
+
+      expect(finalChunk, isNull);
     },
   );
 

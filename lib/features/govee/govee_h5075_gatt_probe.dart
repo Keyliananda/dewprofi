@@ -326,6 +326,26 @@ class GoveeH5075HistoryRangeDiagnostics {
   }
 }
 
+class GoveeH5075HistoryAutoResumePlan {
+  const GoveeH5075HistoryAutoResumePlan._();
+
+  static GoveeH5075HistoryChunk? nextChunk({
+    required GoveeH5075HistoryChunk activeChunk,
+    required Iterable<GoveeH5075HistoryRecord> records,
+  }) {
+    final diagnostics = GoveeH5075HistoryRangeDiagnostics.fromRecords(
+      chunk: activeChunk,
+      records: records,
+    );
+    final nextChunk = diagnostics.nextRecommendedChunk;
+    if (nextChunk == null ||
+        nextChunk.startMinutesBack >= activeChunk.startMinutesBack) {
+      return null;
+    }
+    return nextChunk;
+  }
+}
+
 class GoveeH5075HistoryRecords {
   const GoveeH5075HistoryRecords._();
 

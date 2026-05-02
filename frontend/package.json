@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "build:flutter": "cd .. && flutter build web --release --base-href /flutter/ -o frontend/public/flutter && find frontend/public/flutter -name '*.symbols' -delete && rm -f frontend/public/flutter/.last_build_id",
     "build": "tsc -b && vite build",
+    "build:with-flutter": "npm run build:flutter && npm run build",
     "lint": "eslint .",
     "preview": "vite preview"
   },

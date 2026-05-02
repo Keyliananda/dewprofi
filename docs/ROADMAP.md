@@ -342,18 +342,21 @@ Status Paket `9.7-govee-h5075-thirty-day-experimental-probe`: Fuer die Hardware-
 
 Status Paket `9.8-govee-h5075-history-visualization`: Geladene H5075-History-Records koennen nun in einer Govee-nahen Historienansicht dargestellt werden. Die Ansicht nutzt einen blauen Sensor-Header mit aktuellen Temperatur-/Feuchtewerten, Anzeigezeitraeume `Stunde`, `Tag`, `Woche`, `Monat`, `Jahr` und zwei Chartkarten fuer Temperatur und relative Luftfeuchtigkeit. Das ViewModel dedupliziert nach beobachteter Minute, berechnet Max/Avg/Min, Coverage und Gap-Marker, und die CustomPainter-Charts brechen Linien bei groesseren Datenluecken. Die Ansicht wurde mit einem echten erfolgreichen H5075-Folgechunk praktisch positiv geprueft.
 
+Status Paket `9.9-govee-h5075-auto-resume-and-history-navigation`: Lange H5075-History-Abrufe laufen nach dem manuell gestarteten GATT-Probe jetzt innerhalb derselben Verbindung automatisch ueber Folgechunks weiter, bis die neueste Minute erreicht ist oder ein Fehler/Abbruch stoppt. Die Auto-Resume-Logik nutzt weiterhin nur allowlisted Read-Requests (`aa01`, `aa08`, `3301`), baut keine automatische GATT-Verbindung auf und plant Folgechunks aus der beobachteten Range. Die Historienansicht kann pro Diagramm horizontal vergroessert und gescrollt werden, damit verdichtete Mehrtagesdaten inspizierbar bleiben.
+
 Geplanter Umfang:
 
 - BLE-Scan fuer H5075: Basis erledigt; iOS-Hardware-Validierung erfolgreich, macOS-Pluginpfad wegen TCC-Crash gegated.
 - Passive Advertisement-Decodierung fuer Live-Werte: bekannte Manufacturer-Payload und erstes echtes Sample testbar, weitere Firmware-Samples offen.
 - Normalisiertes Datenmodell fuer Temperatur, relative Luftfeuchte, Batterie, Zeitstempel und Quelle: Basis erledigt.
 - Rohdaten-Samples fuer Parser-Debugging: Basis erledigt, erstes echtes Sample dokumentiert.
-- GATT/History-Probe: Read-only-Spike vorbereitet; 7d und bestaetigter 20d-
-  Probe sind probierbar, partial 20d-Downloads koennen per empfohlenem
-  Folgechunk manuell fortgesetzt werden. Ein bestaetigungspflichtiger 30d-
-  Grenztest ist fuer echte Hardwareproben vorbereitet.
+- GATT/History-Probe: Read-only-Spike vorbereitet; 7d, bestaetigter 20d-Probe
+  und bestaetigungspflichtiger 30d-Grenztest sind probierbar. Partial
+  Downloads werden innerhalb des manuell gestarteten Probe-Laufs ueber
+  allowlisted Folgechunks automatisch fortgesetzt.
 - H5075-History-Darstellung: Erste Govee-nahe iOS-Ansicht mit Zeitraum-Tabs,
-  Temperatur-/Feuchte-Charts, Statistiken und Coverage-Diagnose ist integriert.
+  Temperatur-/Feuchte-Charts, Statistiken, Coverage-Diagnose sowie
+  horizontalem Zoom/Scroll ist integriert.
 
 Diese Phase gehoert nicht mehr zum ersten MVP.
 

@@ -35,10 +35,10 @@ export function LaunchGate({
       <section className="launch-grid">
         <div className="launch-copy">
           <p className="launch-kicker">Geschlossener Vorabzugang</p>
-          <h2>Der Feuchte-Rechner wird vorbereitet.</h2>
+          <h2>Die Dewprofi App wird vorbereitet.</h2>
           <p>
-            Bestehende Konten koennen sich anmelden. Der Produktbereich bleibt bis
-            zum Release gesperrt.
+            Bestehende Konten koennen sich anmelden. Der Workspace bleibt bis zum
+            Release gesperrt.
           </p>
         </div>
 

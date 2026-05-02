@@ -429,13 +429,13 @@ class _GattProbePanel extends StatelessWidget {
               const _ProbeNotice(
                 icon: Icons.warning_amber,
                 text:
-                    'Experimenteller 20-Tage-Abruf: 28800 Minuten, kann lange dauern, abbrechen oder die Verbindung verlieren.',
+                    'Experimenteller 20-Tage-Abruf: 28800 Minuten; Folgechunks laufen nach Start automatisch weiter.',
               ),
             if (historyProbeWindow == GoveeH5075HistoryProbeWindow.thirtyDays)
               const _ProbeNotice(
                 icon: Icons.warning_amber,
                 text:
-                    'Experimenteller 30-Tage-Abruf: 43200 Minuten, unbestaetigt fuer H5075 und nur fuer diesen Hardwaretest.',
+                    'Experimenteller 30-Tage-Abruf: 43200 Minuten, unbestaetigt; Folgechunks laufen nach Start automatisch weiter.',
               ),
             if (historyProbeWindow == GoveeH5075HistoryProbeWindow.sevenDays ||
                 historyProbeWindow == GoveeH5075HistoryProbeWindow.twentyDays ||

@@ -826,6 +826,21 @@ void main() {
       find.byKey(const ValueKey('govee-history-humidity-chart')),
       findsOneWidget,
     );
+
+    final chart = find.byKey(const ValueKey('govee-history-temperature-chart'));
+    final widthBeforeZoom = tester.getSize(chart).width;
+    await tester.tap(
+      find.byKey(const ValueKey('govee-history-temperature-zoom-in-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getSize(chart).width, greaterThan(widthBeforeZoom));
+
+    await tester.drag(
+      find.byKey(const ValueKey('govee-history-temperature-scroll')),
+      const Offset(-80, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
