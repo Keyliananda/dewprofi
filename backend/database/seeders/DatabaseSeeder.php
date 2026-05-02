@@ -15,11 +15,22 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        $email = config('dewprofi.superuser.email');
+        $password = config('dewprofi.superuser.password');
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+        if (! is_string($email) || $email === '' || ! is_string($password) || $password === '') {
+            $this->command?->warn('Superuser seeding skipped: DEWPROFI_SUPERUSER_EMAIL and DEWPROFI_SUPERUSER_PASSWORD must be set.');
+
+            return;
+        }
+
+        User::query()->updateOrCreate([
+            'email' => $email,
+        ], [
+            'name' => config('dewprofi.superuser.name', 'Dewprofi Admin'),
+            'password' => $password,
+            'email_verified_at' => now(),
+            'is_super_admin' => true,
         ]);
     }
 }

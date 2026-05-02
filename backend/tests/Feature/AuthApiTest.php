@@ -56,6 +56,11 @@ class AuthApiTest extends TestCase
         $this->frontend()->getJson('/api/me')->assertUnauthorized();
     }
 
+    public function test_me_requires_an_authenticated_session(): void
+    {
+        $this->frontend()->getJson('/api/me')->assertUnauthorized();
+    }
+
     public function test_invalid_login_is_rejected(): void
     {
         User::factory()->create([

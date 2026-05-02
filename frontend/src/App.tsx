@@ -3,11 +3,14 @@ import type { FormEvent, PointerEvent, WheelEvent } from 'react'
 import './App.css'
 import { ApiError, apiGet, apiPost } from './api'
 import type { User } from './api'
+import { LaunchGate } from './features/launchGate/LaunchGate'
 
 const DEFAULT_PRESSURE_HPA = 1013.25
+const RELEASE_WORKSPACE = import.meta.env.VITE_RELEASE_WORKSPACE === 'true'
 
 type HealthResponse = { status: string }
 type AuthResponse = { user: User }
+type HealthState = 'checking' | 'ok' | 'offline'
 type InputMode = 'manual' | 'place' | 'examples'
 type DetailMode = 'simple' | 'pro'
 type ChartMode = 'none' | 'point' | 'pan'
@@ -67,9 +70,7 @@ type ChartPoint = {
 
 function App() {
   const now = useMemo(() => new Date().toISOString(), [])
-  const [health, setHealth] = useState<'checking' | 'ok' | 'offline'>(
-    'checking',
-  )
+  const [health, setHealth] = useState<HealthState>('checking')
   const [user, setUser] = useState<User | null>(null)
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
   const [inputMode, setInputMode] = useState<InputMode>('manual')
@@ -102,6 +103,10 @@ function App() {
     apiGet<AuthResponse>('/api/me')
       .then((response) => setUser(response.user))
       .catch(() => setUser(null))
+
+    if (!RELEASE_WORKSPACE) {
+      return
+    }
 
     apiGet<{ places: WeatherPlace[] }>('/api/example-places')
       .then((response) => setExamplePlaces(response.places))
@@ -260,6 +265,29 @@ function App() {
     }
   }
 
+  async function submitLaunchLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setIsAuthSubmitting(true)
+    setAuthMessage('')
+    setAuthErrors({})
+
+    try {
+      const payload = Object.fromEntries(new FormData(event.currentTarget).entries())
+      const response = await apiPost<AuthResponse>('/api/login', payload)
+      setUser(response.user)
+      setAuthMessage('Angemeldet.')
+    } catch (nextError) {
+      if (nextError instanceof ApiError) {
+        setAuthMessage(nextError.message)
+        setAuthErrors(nextError.errors)
+      } else {
+        setAuthMessage('Die API ist gerade nicht erreichbar.')
+      }
+    } finally {
+      setIsAuthSubmitting(false)
+    }
+  }
+
   async function logout() {
     setIsAuthSubmitting(true)
     setAuthMessage('')
@@ -272,6 +300,20 @@ function App() {
     } finally {
       setIsAuthSubmitting(false)
     }
+  }
+
+  if (!RELEASE_WORKSPACE) {
+    return (
+      <LaunchGate
+        health={health}
+        user={user}
+        errors={authErrors}
+        message={authMessage}
+        isSubmitting={isAuthSubmitting}
+        onSubmit={submitLaunchLogin}
+        onLogout={logout}
+      />
+    )
   }
 
   return (

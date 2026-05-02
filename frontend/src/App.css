@@ -26,6 +26,79 @@
   align-items: start;
 }
 
+.launch-shell {
+  width: min(1080px, calc(100vw - 32px));
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 32px;
+  margin: 0 auto;
+  padding: 28px 0;
+}
+
+.launch-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.launch-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 28px;
+  align-items: center;
+}
+
+.launch-copy {
+  display: grid;
+  gap: 16px;
+}
+
+.launch-copy h2 {
+  max-width: 720px;
+  font-size: clamp(2.35rem, 6vw, 4.8rem);
+  line-height: 0.98;
+}
+
+.launch-copy p {
+  max-width: 620px;
+  margin: 0;
+  color: #374151;
+  font-size: 1.08rem;
+  line-height: 1.7;
+}
+
+.launch-kicker {
+  color: #0f766e;
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.launch-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.launch-form {
+  margin-top: 2px;
+}
+
+.release-note {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  padding: 14px;
+  color: #0f172a;
+  background: #f0f9ff;
+}
+
+.release-note span {
+  color: #475569;
+}
+
 .side-stack,
 .result-stack {
   display: grid;
@@ -472,6 +545,11 @@ code {
     grid-template-columns: 1fr;
   }
 
+  .launch-grid {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
   .side-stack {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -483,10 +561,22 @@ code {
     padding: 18px 0;
   }
 
+  .launch-shell {
+    width: min(100vw - 24px, 1080px);
+    min-height: auto;
+    gap: 24px;
+    padding: 18px 0;
+  }
+
   .topbar,
+  .launch-topbar,
   .result-head {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .launch-copy h2 {
+    font-size: clamp(2rem, 12vw, 3.2rem);
   }
 
   .side-stack,
