@@ -13,6 +13,8 @@ class AuthController extends Controller
 {
     public function register(Request $request): JsonResponse
     {
+        abort_unless(config('dewprofi.registration.enabled'), 404);
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:users,email'],
@@ -29,7 +31,7 @@ class AuthController extends Controller
         $request->session()->regenerate();
 
         return response()->json([
-            'user' => $user,
+            'user' => $this->userPayload($user),
         ], 201);
     }
 
@@ -49,14 +51,14 @@ class AuthController extends Controller
         $request->session()->regenerate();
 
         return response()->json([
-            'user' => $request->user(),
+            'user' => $this->userPayload($request->user()),
         ]);
     }
 
     public function me(Request $request): JsonResponse
     {
         return response()->json([
-            'user' => $request->user(),
+            'user' => $this->userPayload($request->user()),
         ]);
     }
 
@@ -71,5 +73,15 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Abgemeldet.',
         ]);
+    }
+
+    private function userPayload(User $user): array
+    {
+        return [
+            'id' => $user->getAuthIdentifier(),
+            'name' => $user->name,
+            'email' => $user->email,
+            'is_super_admin' => $user->isSuperAdmin(),
+        ];
     }
 }

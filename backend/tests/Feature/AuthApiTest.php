@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -13,6 +14,8 @@ class AuthApiTest extends TestCase
 
     public function test_user_can_register_and_receive_current_user(): void
     {
+        Config::set('dewprofi.registration.enabled', true);
+
         $response = $this->frontend()->postJson('/api/register', [
             'name' => 'Dew Profi',
             'email' => 'dew@example.com',
@@ -27,6 +30,20 @@ class AuthApiTest extends TestCase
 
         $this->assertAuthenticated();
         $this->assertDatabaseHas('users', [
+            'email' => 'dew@example.com',
+        ]);
+    }
+
+    public function test_registration_is_disabled_by_default(): void
+    {
+        $this->frontend()->postJson('/api/register', [
+            'name' => 'Dew Profi',
+            'email' => 'dew@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ])->assertNotFound();
+
+        $this->assertDatabaseMissing('users', [
             'email' => 'dew@example.com',
         ]);
     }
